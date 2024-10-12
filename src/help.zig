@@ -1,9 +1,38 @@
 const std = @import("std");
 
-pub fn readData(file_name: []u8, val_k: *usize) ![][]f64 {
-    const file = try std.fs.cwd().openFile(file_name, .{});
+fn numOfNonEmptyLines(filename: []const u8) !usize {
+    const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
-    var it_1 = std.mem.split(u8, try file.reader().readUntilDelimiterAlloc(std.heap.c_allocator, '\n', 2048), " ");
+    const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
+    defer std.heap.c_allocator.free(buffer);
+    var lines = std.mem.splitAny(u8, buffer, "\r\n");
+    var res: usize = 0;
+    while (lines.next()) |line|
+        res += @intFromBool(!std.mem.eql(u8, line, ""));
+    return res;
+}
+
+fn getMaxWidthOfFileLines(filename: []u8) !u64 {
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+    const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
+    defer std.heap.c_allocator.free(buffer);
+    var max: u64 = 0;
+    var cur: u64 = 0;
+    for (buffer) |char| {
+        if (char == '\n' or char == '\r') {
+            if (cur > max) max = cur;
+            cur = 0;
+        } else cur += 1;
+    }
+    return if (cur > max) cur else max;
+}
+
+pub fn readData(filename: []u8, val_k: *usize) ![][]f64 {
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+    const maxSize: u64 = try getMaxWidthOfFileLines(filename) + 1;
+    var it_1 = std.mem.split(u8, try file.reader().readUntilDelimiterAlloc(std.heap.c_allocator, '\n', maxSize), " ");
     var i: usize = 0;
     var n: usize = undefined;
     var m: usize = undefined;
@@ -15,85 +44,58 @@ pub fn readData(file_name: []u8, val_k: *usize) ![][]f64 {
         i += 1;
     }
     val_k.* = k;
+    const n_buf: usize = try numOfNonEmptyLines(filename) - 1;
+    n = if (n < n_buf) n else n_buf;
     var x: [][]f64 = try std.heap.c_allocator.alloc([]f64, n);
-    for (0..n) |j| x[j] = try std.heap.c_allocator.alloc(f64, m);
+    for (x) |*j| j.* = try std.heap.c_allocator.alloc(f64, m);
     i = 0;
     while (i < n) {
-        var j: usize = 0;
-        var it = std.mem.split(u8, try file.reader().readUntilDelimiterAlloc(std.heap.c_allocator, '\n', 2048), " ");
-        while (it.next()) |part| {
-            if (j < m) x[i][j] = try std.fmt.parseFloat(f64, part);
-            j += 1;
+        const buf: []u8 = (try file.reader().readUntilDelimiterOrEofAlloc(std.heap.c_allocator, '\n', maxSize)).?;
+        defer std.heap.c_allocator.free(buf);
+        if (!std.mem.eql(u8, buf, "")) {
+            var j: usize = 0;
+            var it = std.mem.split(u8, buf, " ");
+            while (it.next()) |part|
+                if (!std.mem.eql(u8, part, "")) {
+                    x[i][j] = try std.fmt.parseFloat(f64, part);
+                    j += 1;
+                };
+            i += 1;
         }
-        i += 1;
     }
     return x;
 }
 
 pub fn writeData(filename: []const u8, array: []usize) !void {
-    var file = try std.fs.cwd().createFile(filename, .{});
+    const file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
-    var writer = file.writer();
-    var i: usize = 1;
-    for (array) |element| {
-        try writer.print("Object [{}] = {};\n", .{ i, element });
-        i += 1;
-    }
-}
-
-fn numOfLines(filename: []const u8) !usize {
-    var file = try std.fs.cwd().openFile(filename, .{});
-    defer file.close();
-    var count: usize = 1;
-    var flag: bool = true;
-    const val: []u8 = try std.heap.c_allocator.alloc(u8, 3);
-    defer std.heap.c_allocator.free(val);
-    val[0] = 'n';
-    val[1] = 'a';
-    val[2] = 'n';
-    while (flag) {
-        const line: []u8 = file.reader().readUntilDelimiterAlloc(std.heap.page_allocator, '\n', 1024) catch val;
-        if (std.mem.eql(u8, line, val)) flag = false else if (line.len != 0) count += 1;
-    }
-    return count;
+    const writer = file.writer();
+    for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
 }
 
 pub fn getSplit(filename: []const u8) ![]usize {
-    var file = try std.fs.cwd().openFile(filename, .{});
+    const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
-    const val: []u8 = try std.heap.c_allocator.alloc(u8, 3);
-    defer std.heap.c_allocator.free(val);
-    val[0] = 'n';
-    val[1] = 'a';
-    val[2] = 'n';
-    const n: usize = try numOfLines(filename);
+    const n: usize = try numOfNonEmptyLines(filename);
     const res: []usize = try std.heap.c_allocator.alloc(usize, n);
+    const buffer = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
+    defer std.heap.c_allocator.free(buffer);
+    var numbers = std.mem.splitAny(u8, buffer, "\r\n");
     var i: usize = 0;
-    var flag: bool = true;
-    while (flag) {
-        const line: []u8 = file.reader().readUntilDelimiterAlloc(std.heap.page_allocator, '\n', 1024) catch val;
-        if (std.mem.eql(u8, line, val)) {
-            flag = false;
-        } else {
-            if (line.len != 0) {
-                res[i] = try std.fmt.parseInt(usize, line, 10);
-                i += 1;
-            }
-        }
-    }
+    while (numbers.next()) |number|
+        if (!std.mem.eql(u8, number, "")) {
+            res[i] = try std.fmt.parseInt(usize, number, 10);
+            i += 1;
+        };
     return res;
 }
 
 pub fn writeResult(filename: []const u8, array: []usize, p: f64) !void {
-    var file = try std.fs.cwd().createFile(filename, .{});
+    const file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
-    var writer = file.writer();
+    const writer = file.writer();
     try writer.print("Precision of clustering by k-means = {d:};\n", .{p});
-    var i: usize = 1;
-    for (array) |element| {
-        try writer.print("Object [{}] = {};\n", .{ i, element });
-        i += 1;
-    }
+    for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
 }
 
 pub fn getPrecision(y: []usize, x: []usize) !f64 {
@@ -101,11 +103,10 @@ pub fn getPrecision(y: []usize, x: []usize) !f64 {
     const n: usize = y.len;
     var yy: usize = 0;
     var ny: usize = 0;
-    for (0..n) |i| {
+    for (0..n) |i|
         for (i + 1..n) |j| {
             if (x[i] == x[j] and y[i] == y[j]) yy += 1;
             if (x[i] != x[j] and y[i] == y[j]) ny += 1;
-        }
-    }
+        };
     return if (ny == 0 and yy == 0) 0.0 else @as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + ny));
 }

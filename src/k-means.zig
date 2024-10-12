@@ -13,7 +13,7 @@ fn autoscaling(X: [][]f64) ![][]f64 {
     const n: usize = X.len;
     const m: usize = X[0].len;
     var x: [][]f64 = try std.heap.c_allocator.alloc([]f64, n);
-    for (0..n) |i| x[i] = try std.heap.c_allocator.alloc(f64, m);
+    for (x) |*i| i.* = try std.heap.c_allocator.alloc(f64, m);
     for (0..m) |j| {
         var ex: f64 = 0.0;
         var exx: f64 = 0.0;
@@ -46,14 +46,12 @@ fn getCluster(x: []f64, c: [][]f64) !usize {
 fn checkSplitting(x: [][]f64, c: [][]f64, y: []usize, nums: []usize) !bool {
     const n: usize = x.len;
     const m: usize = x[0].len;
-    const k: usize = c.len;
     for (c) |*i| std.crypto.utils.secureZero(f64, i.*);
     for (0..n) |i| {
         const id: usize = y[i];
         for (0..m) |j| c[id][j] += x[i][j];
     }
-    for (0..k) |i| {
-        const count: usize = nums[i];
+    for (nums, 0..) |count, i| {
         for (0..m) |j| c[i][j] /= @floatFromInt(count);
     }
     std.crypto.utils.secureZero(usize, nums);
@@ -68,7 +66,7 @@ fn checkSplitting(x: [][]f64, c: [][]f64, y: []usize, nums: []usize) !bool {
 }
 
 fn contain(y: []usize, k: usize, val: usize) !bool {
-    for (0..k) |i| if (y[i] == val) return true;
+    for (y[0..k]) |i| if (i == val) return true;
     return false;
 }
 
@@ -112,12 +110,12 @@ fn detStartSplitting(x: [][]f64, c: [][]f64, nums: []usize) ![]usize {
 pub fn kmeans(X: [][]f64, k: usize) ![]usize {
     const x: [][]f64 = try autoscaling(X);
     defer {
-        for (0..x.len) |i| std.heap.c_allocator.free(x[i]);
+        for (x) |*i| std.heap.c_allocator.free(i.*);
         std.heap.c_allocator.free(x);
     }
     const c: [][]f64 = try detCores(x, k);
     defer {
-        for (0..c.len) |i| std.heap.c_allocator.free(c[i]);
+        for (c) |*i| std.heap.c_allocator.free(i.*);
         std.heap.c_allocator.free(c);
     }
     const nums = try std.heap.c_allocator.alloc(usize, k);
