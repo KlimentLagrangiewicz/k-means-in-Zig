@@ -12,20 +12,20 @@ pub fn getDistance(y: []f64, x: []f64) !f64 {
 fn autoscaling(X: [][]f64) ![][]f64 {
     const n: usize = X.len;
     const m: usize = X[0].len;
-    var x: [][]f64 = try std.heap.c_allocator.alloc([]f64, n);
-    for (x) |*i| i.* = try std.heap.c_allocator.alloc(f64, m);
+    const x: [][]f64 = try std.heap.c_allocator.alloc([]f64, n);
+    for (x) |*xi| xi.* = try std.heap.c_allocator.alloc(f64, m);
     for (0..m) |j| {
         var ex: f64 = 0.0;
         var exx: f64 = 0.0;
-        for (0..n) |i| {
-            const d: f64 = X[i][j];
+        for (X) |xi| {
+            const d: f64 = xi[j];
             ex += d;
             exx += d * d;
         }
         ex /= @floatFromInt(n);
         exx /= @floatFromInt(n);
         const sd: f64 = std.math.sqrt(exx - ex * ex);
-        for (0..n) |i| x[i][j] = (X[i][j] - ex) / sd;
+        for (x, X) |*xi, Xi| (xi.*)[j] = (Xi[j] - ex) / sd;
     }
     return x;
 }
@@ -33,8 +33,8 @@ fn autoscaling(X: [][]f64) ![][]f64 {
 fn getCluster(x: []f64, c: [][]f64) !usize {
     var res: usize = 0;
     var min_d: f64 = try getDistance(x, c[0]);
-    for (1..c.len) |i| {
-        const cur_d: f64 = try getDistance(x, c[i]);
+    for (c[1..], 1..) |ci, i| {
+        const cur_d: f64 = try getDistance(x, ci);
         if (cur_d < min_d) {
             min_d = cur_d;
             res = i;
@@ -44,29 +44,26 @@ fn getCluster(x: []f64, c: [][]f64) !usize {
 }
 
 fn checkSplitting(x: [][]f64, c: [][]f64, y: []usize, nums: []usize) !bool {
-    const n: usize = x.len;
-    const m: usize = x[0].len;
-    for (c) |*i| std.crypto.utils.secureZero(f64, i.*);
-    for (0..n) |i| {
-        const id: usize = y[i];
-        for (0..m) |j| c[id][j] += x[i][j];
+    for (c) |*ci| std.crypto.utils.secureZero(f64, ci.*);
+    for (y, x) |yi, xi| {
+        for (c[yi], xi) |*c_yi, xij| c_yi.* += xij;
     }
-    for (nums, 0..) |count, i| {
-        for (0..m) |j| c[i][j] /= @floatFromInt(count);
+    for (c, nums) |ci, count| {
+        for (ci) |*cij| cij.* /= @floatFromInt(count);
     }
     std.crypto.utils.secureZero(usize, nums);
     var flag: bool = false;
-    for (0..n) |i| {
-        const f: usize = try getCluster(x[i], c);
-        if (f != y[i]) flag = true;
-        y[i] = f;
+    for (x, y) |xi, *yi| {
+        const f: usize = try getCluster(xi, c);
+        if (f != yi.*) flag = true;
+        yi.* = f;
         nums[f] += 1;
     }
     return flag;
 }
 
-fn contain(y: []usize, k: usize, val: usize) !bool {
-    for (y[0..k]) |i| if (i == val) return true;
+fn contain(y: []usize, val: usize) !bool {
+    for (y) |yi| if (yi == val) return true;
     return false;
 }
 
@@ -75,34 +72,30 @@ fn getNums(n: usize, k: usize) ![]usize {
     var res: []usize = try std.heap.c_allocator.alloc(usize, k);
     for (0..k) |i| {
         var val = random.random().intRangeAtMost(usize, 0, n - 1);
-        while (try contain(res, i, val)) : (val = random.random().intRangeAtMost(usize, 0, n - 1)) {}
+        while (try contain(res[0..i], val)) : (val = random.random().intRangeAtMost(usize, 0, n - 1)) {}
         res[i] = val;
     }
     return res;
 }
 
 fn detCores(x: [][]f64, k: usize) ![][]f64 {
-    const n = x.len;
     const m = x[0].len;
-    const nums = try getNums(n, k);
+    const nums = try getNums(x.len, k);
     defer std.heap.c_allocator.free(nums);
-    var res: [][]f64 = try std.heap.c_allocator.alloc([]f64, k);
-    for (0..k) |i| {
-        res[i] = try std.heap.c_allocator.alloc(f64, m);
-        const val: usize = nums[i];
-        for (0..m) |j| res[i][j] = x[val][j];
+    const c: [][]f64 = try std.heap.c_allocator.alloc([]f64, k);
+    for (c, nums) |*ci, count| {
+        ci.* = try std.heap.c_allocator.alloc(f64, m);
+        for (ci.*, x[count]) |*cij, xij| cij.* = xij;
     }
-    return res;
+    return c;
 }
 
 fn detStartSplitting(x: [][]f64, c: [][]f64, nums: []usize) ![]usize {
-    const n: usize = x.len;
-    var y: []usize = try std.heap.c_allocator.alloc(usize, n);
+    const y: []usize = try std.heap.c_allocator.alloc(usize, x.len);
     std.crypto.utils.secureZero(usize, nums);
-    for (0..n) |i| {
-        const f = try getCluster(x[i], c);
-        y[i] = f;
-        nums[f] += 1;
+    for (x, y) |xi, *yi| {
+        yi.* = try getCluster(xi, c);
+        nums[yi.*] += 1;
     }
     return y;
 }
@@ -110,12 +103,12 @@ fn detStartSplitting(x: [][]f64, c: [][]f64, nums: []usize) ![]usize {
 pub fn kmeans(X: [][]f64, k: usize) ![]usize {
     const x: [][]f64 = try autoscaling(X);
     defer {
-        for (x) |*i| std.heap.c_allocator.free(i.*);
+        for (x) |*xi| std.heap.c_allocator.free(xi.*);
         std.heap.c_allocator.free(x);
     }
     const c: [][]f64 = try detCores(x, k);
     defer {
-        for (c) |*i| std.heap.c_allocator.free(i.*);
+        for (c) |*ci| std.heap.c_allocator.free(ci.*);
         std.heap.c_allocator.free(c);
     }
     const nums = try std.heap.c_allocator.alloc(usize, k);

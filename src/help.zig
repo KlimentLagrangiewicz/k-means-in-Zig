@@ -98,7 +98,7 @@ pub fn writeResult(filename: []const u8, array: []usize, p: f64) !void {
     for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
 }
 
-pub fn getPrecision(y: []usize, x: []usize) !f64 {
+pub fn getPrecision(x: []usize, y: []usize) !f64 {
     if (y.len != x.len) return 0.0;
     const n: usize = y.len;
     var yy: usize = 0;
