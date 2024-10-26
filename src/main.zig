@@ -23,9 +23,22 @@ pub fn main() !void {
         if (args.len > 3) {
             const perfect: []usize = try help.getSplit(args[3]);
             defer std.heap.c_allocator.free(perfect);
-            const p: f64 = try help.getPrecision(perfect, y);
-            std.debug.print("Precision of clustering by k-means = {d:}\n", .{p});
-            try help.writeResult(args[2], y, p);
-        } else try help.writeData(args[2], y);
+            var p: f64 = undefined;
+            var rc: f64 = undefined;
+            var cdi: f64 = undefined;
+            var fmi: f64 = undefined;
+            var hi: f64 = undefined;
+            var ji: f64 = undefined;
+            var mni: f64 = undefined;
+            var phi: f64 = undefined;
+            var randi: f64 = undefined;
+            var rti: f64 = undefined;
+            var rri: f64 = undefined;
+            var s1i: f64 = undefined;
+            var s2i: f64 = undefined;
+            try help.getExternalIndices(perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
+            std.debug.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto indext\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n", .{ p, rc, cdi, fmi, hi, ji, mni, phi, randi, rti, rri, s1i, s2i });
+            try help.writeFullResult(args[2], y, p, rc, cdi, fmi, hi, ji, mni, phi, randi, rti, rri, s1i, s2i);
+        } else try help.writeResult(args[2], y);
     }
 }
