@@ -14,8 +14,7 @@ pub fn main() !void {
         var k: usize = 1;
         const x: [][]f64 = try help.readData(args[1], &k);
         defer {
-            const n: usize = x.len;
-            for (0..n) |i| std.heap.c_allocator.free(x[i]);
+            for (x) |*xi| std.heap.c_allocator.free(xi.*);
             std.heap.c_allocator.free(x);
         }
         const y: []usize = try kmeans.kmeans(x, k);
@@ -29,6 +28,7 @@ pub fn main() !void {
             var fmi: f64 = undefined;
             var hi: f64 = undefined;
             var ji: f64 = undefined;
+            var ki: f64 = undefined;
             var mni: f64 = undefined;
             var phi: f64 = undefined;
             var randi: f64 = undefined;
@@ -36,9 +36,9 @@ pub fn main() !void {
             var rri: f64 = undefined;
             var s1i: f64 = undefined;
             var s2i: f64 = undefined;
-            try help.getExternalIndices(perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
-            std.debug.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto indext\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n", .{ p, rc, cdi, fmi, hi, ji, mni, phi, randi, rti, rri, s1i, s2i });
-            try help.writeFullResult(args[2], y, p, rc, cdi, fmi, hi, ji, mni, phi, randi, rti, rri, s1i, s2i);
+            try help.getExternalIndices(perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &ki, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
+            std.debug.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nKulczynski index\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
+            try help.writeFullResult(args[2], y, p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i);
         } else try help.writeResult(args[2], y);
     }
 }

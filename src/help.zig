@@ -7,8 +7,7 @@ fn numOfNonEmptyLines(filename: []const u8) !usize {
     defer std.heap.c_allocator.free(buffer);
     var lines = std.mem.splitAny(u8, buffer, "\r\n");
     var res: usize = 0;
-    while (lines.next()) |line|
-        res += @intFromBool(!std.mem.eql(u8, line, ""));
+    while (lines.next()) |line| : (res += @intFromBool(!std.mem.eql(u8, line, ""))) {}
     return res;
 }
 
@@ -187,6 +186,21 @@ pub fn getJaccardIndex(x: []const usize, y: []const usize) !f64 {
     return if (yy == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + yn + ny));
 }
 
+pub fn getKulczynskiIndex(x: []const usize, y: []const usize) !f64 {
+    if (x.len != y.len) return 0.0;
+    const n: usize = x.len;
+    var yy: i128 = 0;
+    var yn: i128 = 0;
+    var ny: i128 = 0;
+    for (0..n) |i|
+        for (i + 1..n) |j| {
+            if (x[i] == x[j] and y[i] == y[j]) yy += 1;
+            if (x[i] != x[j] and y[i] == y[j]) ny += 1;
+            if (x[i] == x[j] and y[i] != y[j]) yn += 1;
+        };
+    return if (yy == 0 and (ny == 0 or yn == 0)) 0.0 else 0.5 * ((@as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + ny)) + @as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + yn))));
+}
+
 pub fn getMcNemarIndex(x: []const usize, y: []const usize) !f64 {
     if (x.len != y.len) return 0.0;
     const n: usize = x.len;
@@ -293,7 +307,7 @@ pub fn getSokalSneathSecondIndex(x: []const usize, y: []const usize) !f64 {
     return if (yynn == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yynn)) / (@as(f64, @floatFromInt(yynn)) + 0.5 * (@as(f64, @floatFromInt(yn + ny))));
 }
 
-pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f64, _cdi: *f64, _fmi: *f64, _hi: *f64, _ji: *f64, _mni: *f64, _phi: *f64, _rand: *f64, _rti: *f64, _rri: *f64, _s1i: *f64, _s2i: *f64) !void {
+pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f64, _cdi: *f64, _fmi: *f64, _hi: *f64, _ji: *f64, _ki: *f64, _mni: *f64, _phi: *f64, _rand: *f64, _rti: *f64, _rri: *f64, _s1i: *f64, _s2i: *f64) !void {
     if (x.len != y.len) {
         _p.* = 0.0;
         _rc.* = 0.0;
@@ -301,6 +315,7 @@ pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f6
         _fmi.* = 0.0;
         _hi.* = 0.0;
         _ji.* = 0.0;
+        _ki.* = 0.0;
         _mni.* = 0.0;
         _phi.* = 0.0;
         _rand.* = 0.0;
@@ -331,6 +346,7 @@ pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f6
     _fmi.* = if (yy == 0 and (yn == 0 or ny == 0)) 0.0 else @as(f64, @floatFromInt(yy)) / std.math.sqrt(@as(f64, @floatFromInt(m)));
     _hi.* = if (m == 0 or nn == 0 and (yn == 0 or ny == 0)) 0.0 else 0.5 * @as(f64, @floatFromInt(n * (n - 1) * yy - m)) / std.math.sqrt(@as(f64, @floatFromInt(m * k)));
     _ji.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + yn + ny));
+    _ki.* = if (yy == 0 and (ny == 0 or yn == 0)) 0.0 else 0.5 * ((@as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + ny)) + @as(f64, @floatFromInt(yy)) / @as(f64, @floatFromInt(yy + yn))));
     _mni.* = if (nn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(nn - ny)) / std.math.sqrt(@as(f64, @floatFromInt(nn + ny)));
     _phi.* = if (m == 0 or k == 0) 0.0 else @as(f64, @floatFromInt(yy * nn - yn * ny)) / std.math.sqrt(@as(f64, @floatFromInt(m * k)));
     _rand.* = if (n < 2) 0.0 else @as(f64, @floatFromInt(2 * (yy + nn))) / @as(f64, @floatFromInt(n * (n - 1)));
@@ -340,10 +356,10 @@ pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f6
     _s2i.* = if (yynn == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yynn)) / (@as(f64, @floatFromInt(yynn)) + 0.5 * (@as(f64, @floatFromInt(yn + ny))));
 }
 
-pub fn writeFullResult(filename: []const u8, array: []const usize, p: f64, rc: f64, cdi: f64, fmi: f64, hi: f64, ji: f64, mni: f64, phi: f64, randi: f64, rti: f64, rri: f64, s1i: f64, s2i: f64) !void {
+pub fn writeFullResult(filename: []const u8, array: []const usize, p: f64, rc: f64, cdi: f64, fmi: f64, hi: f64, ji: f64, ki: f64, mni: f64, phi: f64, randi: f64, rti: f64, rri: f64, s1i: f64, s2i: f64) !void {
     const file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
     const writer = file.writer();
-    try writer.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t\t= {d:}\nJaccard index\t\t\t= {d:}\nMcNemar index\t\t\t= {d:}\nPhi index\t\t\t\t= {d:}\nRand index\t\t\t\t= {d:}\nRogers-Tanimoto indext\t= {d:}\nRussel-Rao index\t\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n\n", .{ p, rc, cdi, fmi, hi, ji, mni, phi, randi, rti, rri, s1i, s2i });
+    try writer.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t\t= {d:}\nJaccard index\t\t\t= {d:}\nKulczynski index\t\t= {d:}\nMcNemar index\t\t\t= {d:}\nPhi index\t\t\t\t= {d:}\nRand index\t\t\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
     for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
 }

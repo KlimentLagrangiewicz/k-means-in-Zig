@@ -1,5 +1,5 @@
 # k-means-in-Zig
-An implementation of k-means clustering algorithm in Zig programming language
+Implementation of k-means clustering algorithm in [Zig](https://github.com/ziglang/zig) programming language
 
 ## About k-means
 The k-means algorithm is an iterative data clustering algorithm developed by Stuart Lloyd of Bell Labs in the 1950s as a technique for pulse-code modulation.  
