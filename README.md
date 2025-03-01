@@ -32,9 +32,20 @@ A visualisation of the first four iterations of the algorithm is shown in figure
 <p align="center">Figure 1 — Processing the Old Faithful Geyser dataset using the k-means algorithm</p>  
 
 ## Example of usage
+Cloning project and changing current directory:
 ```
 git clone https://github.com/KlimentLagrangiewicz/k-means-in-Zig
-cd k-means-in-Zig  
-zig build-exe -lc -O ReleaseSafe -freference-trace  ./src/main.zig 
-./main ./data_sets/iris ./data_sets/new_res ./data_sets/iris_res
+cd k-means-in-Zig
+```
+Build and run:
+```
+zig build run -- ./datasets/iris ./datasets/new_res ./datasets/iris_res
+```
+Or build from source:
+```
+zig build
+```
+And after that run app.:
+```
+./zig-out/bin/kmeans ./datasets/iris ./datasets/new_res ./datasets/iris_res
 ```

@@ -1,0 +1,42 @@
+# Zig build artifacts
+zig-out/
+/release/
+/debug/
+/build/
+/build-*/
+/docgen_tmp/
+zig-cache/
+.zig-cache/
+
+# Dependency directories (if using a package manager like gyro or others)
+deps/
+.zigmod/
+.gyro/
+
+# Compiled binaries
+*.exe
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE-specific files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# Local configuration files
+local/
+config.local.json
