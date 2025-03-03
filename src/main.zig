@@ -8,19 +8,25 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    if (args.len < 3) {
+    if (args.len < 6) {
         try std.io.getStdOut().writer().print("Not enough parameters\n", .{});
     } else {
-        var k: usize = 1;
-        const x: [][]f64 = try help.readData(args[1], &k);
+        const n: usize = try std.fmt.parseInt(usize, args[2], 10);
+        const m: usize = try std.fmt.parseInt(usize, args[3], 10);
+        const k: usize = try std.fmt.parseInt(usize, args[4], 10);
+        if (n < 1 or m < 1 or k < 1 or k > n) {
+            try std.io.getStdOut().writer().print("Values of input parameters are incorrect\n", .{});
+            std.process.exit(1);
+        }
+        const x: [][]f64 = try help.readData(args[1], n, m);
         defer {
             for (x) |*xi| std.heap.c_allocator.free(xi.*);
             std.heap.c_allocator.free(x);
         }
         const y: []usize = try kmeans.kmeans(x, k);
         defer std.heap.c_allocator.free(y);
-        if (args.len > 3) {
-            const perfect: []usize = try help.getSplit(args[3]);
+        if (args.len > 6) {
+            const perfect: []usize = try help.readArrayFromFile(usize, args[6]);
             defer std.heap.c_allocator.free(perfect);
             var p: f64 = undefined;
             var rc: f64 = undefined;
@@ -37,8 +43,8 @@ pub fn main() !void {
             var s1i: f64 = undefined;
             var s2i: f64 = undefined;
             try help.getExternalIndices(perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &ki, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
-            try std.io.getStdOut().writer().print("The result of clustering using k-means:\nPrecision coefficient\t= {d:8.5}\nRecall coefficient\t= {d:17}\nCzekanowski-Dice index\t= {d:17}\nFolkes-Mallows index\t= {d:17}\nHubert index\t\t= {d:17}\nJaccard index\t\t= {d:17}\nKulczynski index\t= {d:17}\nMcNemar index\t\t= {d:17}\nPhi index\t\t= {d:17}\nRand index\t\t= {d:17}\nRogers-Tanimoto index\t= {d:17}\nRussel-Rao index\t= {d:17}\nSokal-Sneath I index\t= {d:17}\nSokal-Sneath II index\t= {d:17}\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
-            try help.writeFullResult(args[2], y, p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i);
-        } else try help.writeResult(args[2], y);
+            try std.io.getStdOut().writer().print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nKulczynski index\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
+            try help.writeFullResult(args[5], y, p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i);
+        } else try help.writeResult(args[5], y);
     }
 }

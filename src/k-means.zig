@@ -5,7 +5,7 @@ const setZero = std.crypto.utils.secureZero;
 pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     var sum: f64 = 0.0;
     for (y, x) |i, j| sum += (i - j) * (i - j);
-    return sum;
+    return std.math.sqrt(sum);
 }
 
 pub fn autoscaling(X: [][]const f64) ![][]f64 {
@@ -47,7 +47,7 @@ fn getCluster(x: []const f64, c: [][]const f64) !usize {
     return res;
 }
 
-fn checkSplitting(x: [][]const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
+fn checkPartition(x: [][]const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
     for (c) |*ci| setZero(f64, ci.*);
     for (y, x) |yi, xi| {
         for (c[yi], xi) |*c_yi, xij| c_yi.* += xij;
@@ -72,7 +72,7 @@ fn contain(y: []const usize, val: usize) !bool {
 }
 
 fn getNums(n: usize, k: usize) ![]usize {
-    var random = std.rand.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var random = std.rand.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
     const res: []usize = try cAllocator.alloc(usize, k);
     for (0..k) |i| {
         var val = random.random().intRangeAtMost(usize, 0, n - 1);
@@ -94,7 +94,7 @@ fn detCores(x: [][]const f64, k: usize) ![][]f64 {
     return c;
 }
 
-fn detStartSplitting(x: [][]const f64, c: [][]const f64, nums: []usize) ![]usize {
+fn detStartPartition(x: [][]const f64, c: [][]const f64, nums: []usize) ![]usize {
     const y: []usize = try cAllocator.alloc(usize, x.len);
     setZero(usize, nums);
     for (x, y) |xi, *yi| {
@@ -117,7 +117,7 @@ pub fn kmeans(X: [][]const f64, k: usize) ![]usize {
     }
     const nums = try cAllocator.alloc(usize, k);
     defer cAllocator.free(nums);
-    const y: []usize = try detStartSplitting(x, c, nums);
-    while (try checkSplitting(x, c, y, nums)) {}
+    const y: []usize = try detStartPartition(x, c, nums);
+    while (try checkPartition(x, c, y, nums)) {}
     return y;
 }

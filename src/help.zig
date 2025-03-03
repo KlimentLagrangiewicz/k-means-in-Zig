@@ -1,68 +1,43 @@
 const std = @import("std");
 
-fn numOfNonEmptyLines(filename: []const u8) !usize {
+pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
+    if (@typeInfo(T) != .Float and @typeInfo(T) != .Int) @compileError("Only ints and floats are accepted");
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
     const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
     defer std.heap.c_allocator.free(buffer);
-    var lines = std.mem.splitAny(u8, buffer, "\r\n");
-    var res: usize = 0;
-    while (lines.next()) |line| : (res += @intFromBool(!std.mem.eql(u8, line, ""))) {}
-    return res;
-}
-
-fn getMaxWidthOfFileLines(filename: []u8) !u64 {
-    const file = try std.fs.cwd().openFile(filename, .{});
-    defer file.close();
-    const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
-    defer std.heap.c_allocator.free(buffer);
-    var max: u64 = 0;
-    var cur: u64 = 0;
-    for (buffer) |char| {
-        if (char == '\n' or char == '\r') {
-            if (cur > max) max = cur;
-            cur = 0;
-        } else cur += 1;
-    }
-    return if (cur > max) cur else max;
-}
-
-pub fn readData(filename: []u8, val_k: *usize) ![][]f64 {
-    const file = try std.fs.cwd().openFile(filename, .{});
-    defer file.close();
-    const maxSize: u64 = try getMaxWidthOfFileLines(filename) + 1;
-    var it_1 = std.mem.split(u8, try file.reader().readUntilDelimiterAlloc(std.heap.c_allocator, '\n', maxSize), " ");
-    var i: usize = 0;
-    var n: usize = undefined;
-    var m: usize = undefined;
-    var k: usize = undefined;
-    while (it_1.next()) |part| {
-        if (i == 0) n = try std.fmt.parseInt(usize, part, 10);
-        if (i == 1) m = try std.fmt.parseInt(usize, part, 10);
-        if (i == 2) k = try std.fmt.parseInt(usize, part, 10);
-        i += 1;
-    }
-    val_k.* = k;
-    const n_buf: usize = try numOfNonEmptyLines(filename) - 1;
-    n = if (n < n_buf) n else n_buf;
-    var x: [][]f64 = try std.heap.c_allocator.alloc([]f64, n);
-    for (x) |*j| j.* = try std.heap.c_allocator.alloc(f64, m);
-    i = 0;
-    while (i < n) {
-        const buf: []u8 = (try file.reader().readUntilDelimiterOrEofAlloc(std.heap.c_allocator, '\n', maxSize)).?;
-        defer std.heap.c_allocator.free(buf);
-        if (!std.mem.eql(u8, buf, "")) {
-            var j: usize = 0;
-            var it = std.mem.split(u8, buf, " ");
-            while (it.next()) |part|
-                if (!std.mem.eql(u8, part, "")) {
-                    x[i][j] = try std.fmt.parseFloat(f64, part);
-                    j += 1;
-                };
-            i += 1;
+    var list = std.ArrayList(T).init(std.heap.c_allocator);
+    defer list.clearAndFree();
+    var it = std.mem.tokenizeAny(u8, buffer, "\n ,\r");
+    if (@typeInfo(T) == .Int) {
+        while (it.next()) |num| {
+            const n = try std.fmt.parseInt(T, num, 10);
+            try list.append(n);
+        }
+    } else {
+        while (it.next()) |num| {
+            const n = try std.fmt.parseFloat(T, num);
+            try list.append(n);
         }
     }
+    return list.toOwnedSlice();
+}
+
+fn arrayToMatr(comptime T: type, a: []const T, n: usize, m: usize) ![][]T {
+    if (a.len != n * m) return error.BadSize;
+    const x: [][]T = try std.heap.c_allocator.alloc([]T, n);
+    for (x) |*xi| xi.* = try std.heap.c_allocator.alloc(T, m);
+    for (0..n) |i|
+        for (0..m) |j| {
+            x[i][j] = a[i * m + j];
+        };
     return x;
+}
+
+pub fn readData(filename: []const u8, n: usize, m: usize) ![][]f64 {
+    const xArr: []f64 = try readArrayFromFile(f64, filename);
+    defer std.heap.c_allocator.free(xArr);
+    return try arrayToMatr(f64, xArr, n, m);
 }
 
 pub fn writeResult(filename: []const u8, array: []usize) !void {
@@ -70,23 +45,6 @@ pub fn writeResult(filename: []const u8, array: []usize) !void {
     defer file.close();
     const writer = file.writer();
     for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
-}
-
-pub fn getSplit(filename: []const u8) ![]usize {
-    const file = try std.fs.cwd().openFile(filename, .{});
-    defer file.close();
-    const n: usize = try numOfNonEmptyLines(filename);
-    const res: []usize = try std.heap.c_allocator.alloc(usize, n);
-    const buffer = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
-    defer std.heap.c_allocator.free(buffer);
-    var numbers = std.mem.splitAny(u8, buffer, "\r\n");
-    var i: usize = 0;
-    while (numbers.next()) |number|
-        if (!std.mem.eql(u8, number, "")) {
-            res[i] = try std.fmt.parseInt(usize, number, 10);
-            i += 1;
-        };
-    return res;
 }
 
 pub fn writeShortFullResult(filename: []const u8, array: []const usize, p: f64) !void {
@@ -360,6 +318,6 @@ pub fn writeFullResult(filename: []const u8, array: []const usize, p: f64, rc: f
     const file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
     const writer = file.writer();
-    try writer.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t\t= {d:}\nJaccard index\t\t\t= {d:}\nKulczynski index\t\t= {d:}\nMcNemar index\t\t\t= {d:}\nPhi index\t\t\t\t= {d:}\nRand index\t\t\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
+    try writer.print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nKulczynski index\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
     for (array, 0..) |element, i| try writer.print("Object [{}] = {};\n", .{ i, element });
 }
