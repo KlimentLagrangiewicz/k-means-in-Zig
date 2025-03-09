@@ -1,6 +1,6 @@
 const std = @import("std");
-const kmeans = @import("k-means.zig");
-const help = @import("help.zig");
+const kmeans = @import("k-means");
+const help = @import("help");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

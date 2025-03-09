@@ -3,12 +3,13 @@ const cAllocator = std.heap.c_allocator;
 const setZero = std.crypto.utils.secureZero;
 
 pub fn getDistance(y: []const f64, x: []const f64) !f64 {
+    if (y.len != x.len) return error.IterableLengthMismatch;
     var sum: f64 = 0.0;
     for (y, x) |i, j| sum += (i - j) * (i - j);
     return std.math.sqrt(sum);
 }
 
-pub fn autoscaling(X: [][]const f64) ![][]f64 {
+pub fn autoscaling(X: []const []const f64) ![][]f64 {
     const n: usize = X.len;
     const m: usize = X[0].len;
     const ex: []f64 = try cAllocator.alloc(f64, m);
@@ -34,7 +35,7 @@ pub fn autoscaling(X: [][]const f64) ![][]f64 {
     return x;
 }
 
-fn getCluster(x: []const f64, c: [][]const f64) !usize {
+fn getCluster(x: []const f64, c: []const []const f64) !usize {
     var res: usize = 0;
     var min_d: f64 = try getDistance(x, c[0]);
     for (c[1..], 1..) |ci, i| {
@@ -47,7 +48,7 @@ fn getCluster(x: []const f64, c: [][]const f64) !usize {
     return res;
 }
 
-fn checkPartition(x: [][]const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
+fn checkPartition(x: []const []const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
     for (c) |*ci| setZero(f64, ci.*);
     for (y, x) |yi, xi| {
         for (c[yi], xi) |*c_yi, xij| c_yi.* += xij;
@@ -71,8 +72,23 @@ fn contain(y: []const usize, val: usize) !bool {
     return false;
 }
 
+test "test 1 contain fun" {
+    const x = [_]usize{ 0, 1 };
+    try std.testing.expectEqual(true, try contain(&x, 1));
+}
+
+test "test 2 contain fun" {
+    const x = [_]usize{ 0, 1 };
+    try std.testing.expectEqual(false, try contain(&x, 3));
+}
+
+test "test 3 contain fun" {
+    const x = [_]usize{};
+    try std.testing.expectEqual(false, try contain(&x, 1));
+}
+
 fn getNums(n: usize, k: usize) ![]usize {
-    var random = std.rand.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
+    var random = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
     const res: []usize = try cAllocator.alloc(usize, k);
     for (0..k) |i| {
         var val = random.random().intRangeAtMost(usize, 0, n - 1);
@@ -82,7 +98,7 @@ fn getNums(n: usize, k: usize) ![]usize {
     return res;
 }
 
-fn detCores(x: [][]const f64, k: usize) ![][]f64 {
+fn detCores(x: []const []const f64, k: usize) ![][]f64 {
     const m = x[0].len;
     const nums = try getNums(x.len, k);
     defer cAllocator.free(nums);
@@ -94,7 +110,7 @@ fn detCores(x: [][]const f64, k: usize) ![][]f64 {
     return c;
 }
 
-fn detStartPartition(x: [][]const f64, c: [][]const f64, nums: []usize) ![]usize {
+fn detStartPartition(x: []const []const f64, c: []const []const f64, nums: []usize) ![]usize {
     const y: []usize = try cAllocator.alloc(usize, x.len);
     setZero(usize, nums);
     for (x, y) |xi, *yi| {
@@ -104,7 +120,7 @@ fn detStartPartition(x: [][]const f64, c: [][]const f64, nums: []usize) ![]usize
     return y;
 }
 
-pub fn kmeans(X: [][]const f64, k: usize) ![]usize {
+pub fn kmeans(X: []const []const f64, k: usize) ![]usize {
     const x: [][]f64 = try autoscaling(X);
     defer {
         for (x) |*xi| cAllocator.free(xi.*);

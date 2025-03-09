@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
-    if (@typeInfo(T) != .Float and @typeInfo(T) != .Int) @compileError("Only ints and floats are accepted");
+    if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted");
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
     const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
@@ -9,7 +9,7 @@ pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
     var list = std.ArrayList(T).init(std.heap.c_allocator);
     defer list.clearAndFree();
     var it = std.mem.tokenizeAny(u8, buffer, "\n ,\r");
-    if (@typeInfo(T) == .Int) {
+    if (@typeInfo(T) == .int) {
         while (it.next()) |num| {
             const n = try std.fmt.parseInt(T, num, 10);
             try list.append(n);
@@ -20,7 +20,7 @@ pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
             try list.append(n);
         }
     }
-    return list.toOwnedSlice();
+    return try list.toOwnedSlice();
 }
 
 fn arrayToMatr(comptime T: type, a: []const T, n: usize, m: usize) ![][]T {
@@ -56,7 +56,7 @@ pub fn writeShortFullResult(filename: []const u8, array: []const usize, p: f64) 
 }
 
 pub fn getPrecisionCoeff(x: []const usize, y: []const usize) !f64 {
-    if (y.len != x.len) return 0.0;
+    if (y.len != x.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var ny: i128 = 0;
@@ -69,7 +69,7 @@ pub fn getPrecisionCoeff(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getRecallCoeff(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -82,7 +82,7 @@ pub fn getRecallCoeff(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getCzekanowskiDiceIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -97,7 +97,7 @@ pub fn getCzekanowskiDiceIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getFolkesMallowsIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -112,7 +112,7 @@ pub fn getFolkesMallowsIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getHubertIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: i128 = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -130,7 +130,7 @@ pub fn getHubertIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getJaccardIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -145,7 +145,7 @@ pub fn getJaccardIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getKulczynskiIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -160,7 +160,7 @@ pub fn getKulczynskiIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getMcNemarIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var nn: i128 = 0;
     var ny: i128 = 0;
@@ -173,7 +173,7 @@ pub fn getMcNemarIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getPhiIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -192,7 +192,7 @@ pub fn getPhiIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getRandIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len or x.len < 2) return 0.0;
+    if (x.len != y.len or x.len < 2) return error.IncomparableSize;
     const n: i128 = x.len;
     var yy: i128 = 0;
     var nn: i128 = 0;
@@ -205,7 +205,7 @@ pub fn getRandIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getRogersTanimotoIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: i128 = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -223,7 +223,7 @@ pub fn getRogersTanimotoIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getRusselRaoIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len or x.len < 2) return 0.0;
+    if (x.len != y.len or x.len < 2) return error.IncomparableSize;
     const n: i128 = x.len;
     var yy: i128 = 0;
     for (0..@intCast(n)) |i| {
@@ -233,7 +233,7 @@ pub fn getRusselRaoIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getSokalSneathFirstIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -248,7 +248,7 @@ pub fn getSokalSneathFirstIndex(x: []const usize, y: []const usize) !f64 {
 }
 
 pub fn getSokalSneathSecondIndex(x: []const usize, y: []const usize) !f64 {
-    if (x.len != y.len) return 0.0;
+    if (x.len != y.len) return error.IncomparableSize;
     const n: usize = x.len;
     var yy: i128 = 0;
     var yn: i128 = 0;
@@ -281,7 +281,7 @@ pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f6
         _rri.* = 0.0;
         _s1i.* = 0.0;
         _s2i.* = 0.0;
-        return;
+        return error.IncomparableSize;
     }
     const n: i128 = x.len;
     var yy: i128 = 0;

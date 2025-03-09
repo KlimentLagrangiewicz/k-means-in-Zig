@@ -48,5 +48,8 @@ zig build
 And after that run app.:
 ```
 ./zig-out/bin/kmeans ./datasets/iris.txt 150 4 3 ./datasets/new_res.txt ./datasets/iris_res.txt
-
+```
+Unit testing:
+```
+zig build test
 ```
