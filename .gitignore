@@ -40,3 +40,6 @@ temp/
 # Local configuration files
 local/
 config.local.json
+
+# Results of clustering
+datasets/**/*.txt

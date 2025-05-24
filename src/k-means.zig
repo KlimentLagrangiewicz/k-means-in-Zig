@@ -25,12 +25,13 @@ pub fn autoscaling(X: []const []const f64) ![][]f64 {
         };
     for (ex, exx) |*exi, *exxi| {
         exi.* /= @floatFromInt(n);
-        exxi.* = std.math.sqrt(exxi.* / @as(f64, @floatFromInt(n)) - exi.* * exi.*);
+        exxi.* = @abs(exxi.* / @as(f64, @floatFromInt(n)) - exi.* * exi.*);
+        exxi.* = if (exxi.* == 0.0) 1.0 else 1.0 / std.math.sqrt(exxi.*);
     }
     const x: [][]f64 = try cAllocator.alloc([]f64, n);
     for (x, X) |*xi, Xi| {
         xi.* = try cAllocator.alloc(f64, m);
-        for (xi.*, Xi, ex, exx) |*xij, Xij, exj, exxj| xij.* = (Xij - exj) / exxj;
+        for (xi.*, Xi, ex, exx) |*xij, Xij, exj, exxj| xij.* = (Xij - exj) * exxj;
     }
     return x;
 }

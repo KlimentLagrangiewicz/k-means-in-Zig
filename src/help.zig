@@ -8,16 +8,20 @@ pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
     defer std.heap.c_allocator.free(buffer);
     var list = std.ArrayList(T).init(std.heap.c_allocator);
     defer list.clearAndFree();
-    var it = std.mem.tokenizeAny(u8, buffer, "\n ,\r");
+    var it = std.mem.tokenizeAny(u8, buffer, ", \n\r\t\u{feff}");
     if (@typeInfo(T) == .int) {
-        while (it.next()) |num| {
-            const n = try std.fmt.parseInt(T, num, 10);
-            try list.append(n);
+        while (it.next()) |token| {
+            if (token.len != 0) {
+                const n = try std.fmt.parseInt(T, token, 10);
+                try list.append(n);
+            }
         }
     } else {
-        while (it.next()) |num| {
-            const n = try std.fmt.parseFloat(T, num);
-            try list.append(n);
+        while (it.next()) |token| {
+            if (token.len != 0) {
+                const n = try std.fmt.parseFloat(T, token);
+                try list.append(n);
+            }
         }
     }
     return try list.toOwnedSlice();

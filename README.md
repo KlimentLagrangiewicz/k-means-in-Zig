@@ -39,15 +39,18 @@ cd k-means-in-Zig
 ```
 Build and run:
 ```
-zig build run -- ./datasets/iris.txt 150 4 3 ./datasets/new_res.txt ./datasets/iris_res.txt
+zig build run -- ./datasets/iris.csv 150 4 3 ./datasets/new_res.txt ./datasets/iris_res.csv
 ```
 Or build from source:
 ```
 zig build
 ```
-And after that run app.:
+And after that run the app.:
 ```
-./zig-out/bin/kmeans ./datasets/iris.txt 150 4 3 ./datasets/new_res.txt ./datasets/iris_res.txt
+./zig-out/bin/kmeans ./datasets/iris.csv 150 4 3 ./datasets/new_res.txt ./datasets/iris_res.csv
+```
+```
+./zig-out/bin/kmeans ./datasets/wine.csv 178 13 3 ./datasets/new_res.txt ./datasets/wine_res.csv
 ```
 Unit testing:
 ```
