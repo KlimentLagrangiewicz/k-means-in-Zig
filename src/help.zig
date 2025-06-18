@@ -1,47 +1,195 @@
 const std = @import("std");
 
-pub fn readArrayFromFile(comptime T: type, filename: []const u8) ![]T {
+pub fn readArrayFromFile(comptime T: type, filename: []const u8, allocator: std.mem.Allocator) ![]T {
     if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted");
-    const file = try std.fs.cwd().openFile(filename, .{});
+    const file = std.fs.cwd().openFile(filename, .{}) catch |err| {
+        try std.io.getStdOut().writer().print("Error during opening `{s}` file: {s}\n", .{ filename, @errorName(err) });
+        return err;
+    };
     defer file.close();
-    const buffer: []u8 = try file.reader().readAllAlloc(std.heap.c_allocator, try file.getEndPos());
-    defer std.heap.c_allocator.free(buffer);
-    var list = std.ArrayList(T).init(std.heap.c_allocator);
-    defer list.clearAndFree();
-    var it = std.mem.tokenizeAny(u8, buffer, ", \n\r\t\u{feff}");
+
+    var buffered_reader = std.io.bufferedReader(file.reader());
+    const reader = buffered_reader.reader();
+    var line_buffer = std.ArrayList(u8).init(allocator);
+    defer line_buffer.deinit();
+
+    var res = std.ArrayList(T).init(allocator);
+    defer res.deinit();
     if (@typeInfo(T) == .int) {
-        while (it.next()) |token| {
-            if (token.len != 0) {
-                const n = try std.fmt.parseInt(T, token, 10);
-                try list.append(n);
+        while (reader.streamUntilDelimiter(line_buffer.writer(), '\n', null)) {
+            const line = line_buffer.items;
+            if (line.len != 0) {
+                var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+                while (line_iterator.next()) |token| {
+                    if (token.len != 0) {
+                        const n = try std.fmt.parseInt(T, token, 10);
+                        try res.append(n);
+                    }
+                }
             }
+            line_buffer.clearRetainingCapacity();
+        } else |err| switch (err) {
+            error.EndOfStream => {
+                if (line_buffer.items.len > 0) {
+                    const line = line_buffer.items;
+                    if (line.len != 0) {
+                        var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+                        while (line_iterator.next()) |token| {
+                            if (token.len != 0) {
+                                const n = try std.fmt.parseInt(T, token, 10);
+                                try res.append(n);
+                            }
+                        }
+                    }
+                    line_buffer.clearRetainingCapacity();
+                }
+            },
+            else => return err,
         }
     } else {
-        while (it.next()) |token| {
-            if (token.len != 0) {
-                const n = try std.fmt.parseFloat(T, token);
-                try list.append(n);
+        while (reader.streamUntilDelimiter(line_buffer.writer(), '\n', null)) {
+            const line = line_buffer.items;
+            if (line.len != 0) {
+                var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+                while (line_iterator.next()) |token| {
+                    if (token.len != 0) {
+                        const n = try std.fmt.parseFloat(T, token);
+                        try res.append(n);
+                    }
+                }
             }
+            line_buffer.clearRetainingCapacity();
+        } else |err| switch (err) {
+            error.EndOfStream => {
+                if (line_buffer.items.len > 0) {
+                    const line = line_buffer.items;
+                    if (line.len != 0) {
+                        var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+                        while (line_iterator.next()) |token| {
+                            if (token.len != 0) {
+                                const n = try std.fmt.parseFloat(T, token);
+                                try res.append(n);
+                            }
+                        }
+                    }
+                    line_buffer.clearRetainingCapacity();
+                }
+            },
+            else => return err,
         }
     }
-    return try list.toOwnedSlice();
+    return try res.toOwnedSlice();
 }
 
-fn arrayToMatr(comptime T: type, a: []const T, n: usize, m: usize) ![][]T {
-    if (a.len != n * m) return error.BadSize;
-    const x: [][]T = try std.heap.c_allocator.alloc([]T, n);
-    for (x) |*xi| xi.* = try std.heap.c_allocator.alloc(T, m);
-    for (0..n) |i|
-        for (0..m) |j| {
-            x[i][j] = a[i * m + j];
-        };
+pub fn readMatrFromCSV(filename: []const u8, allocator: std.mem.Allocator) !std.ArrayList(std.ArrayList(std.ArrayList(u8))) {
+    const file = std.fs.cwd().openFile(filename, .{}) catch |err| {
+        try std.io.getStdOut().writer().print("Error during opening `{s}` file: {s}\n", .{ filename, @errorName(err) });
+        return err;
+    };
+    defer file.close();
+
+    var buffered_reader = std.io.bufferedReader(file.reader());
+    const reader = buffered_reader.reader();
+    var line_buffer = std.ArrayList(u8).init(allocator);
+    defer line_buffer.deinit();
+
+    var matr = std.ArrayList(std.ArrayList(std.ArrayList(u8))).init(allocator);
+
+    while (reader.streamUntilDelimiter(line_buffer.writer(), '\n', null)) {
+        var row = std.ArrayList(std.ArrayList(u8)).init(allocator);
+        defer row.deinit();
+
+        const line = line_buffer.items;
+        if (line.len != 0) {
+            var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+
+            while (line_iterator.next()) |token| {
+                if (token.len != 0) {
+                    var elem = try std.ArrayList(u8).initCapacity(allocator, token.len);
+                    defer elem.deinit();
+                    try elem.appendSlice(token);
+                    try row.append(try elem.clone());
+                }
+            }
+            try matr.append(try row.clone());
+        }
+
+        line_buffer.clearRetainingCapacity();
+    } else |err| switch (err) {
+        error.EndOfStream => {
+            if (line_buffer.items.len > 0) {
+                var row = std.ArrayList(std.ArrayList(u8)).init(allocator);
+                defer row.deinit();
+
+                const line = line_buffer.items;
+                if (line.len != 0) {
+                    var line_iterator = std.mem.tokenizeAny(u8, line, ", \n\r\t\u{feff}");
+
+                    while (line_iterator.next()) |token| {
+                        if (token.len != 0) {
+                            var elem = try std.ArrayList(u8).initCapacity(allocator, token.len);
+                            defer elem.deinit();
+                            try elem.appendSlice(token);
+                            try row.append(try elem.clone());
+                        }
+                    }
+                    try matr.append(try row.clone());
+                }
+                line_buffer.clearRetainingCapacity();
+            }
+        },
+        else => return err,
+    }
+    return matr;
+}
+
+pub fn allRowsHaveEqualLength(comptime T: type, list: std.ArrayList(std.ArrayList(T))) bool {
+    if (list.items.len < 2) return true;
+
+    const items = list.items;
+    const first_len = items[0].items.len;
+    for (items[1..]) |item| {
+        if (item.items.len != first_len) return false;
+    }
+    return true;
+}
+
+pub fn getMatrFromStrMatr(comptime T: type, strMatr: std.ArrayList(std.ArrayList(std.ArrayList(u8))), allocator: std.mem.Allocator) ![][]T {
+    if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted as elements of matrix");
+    if (!allRowsHaveEqualLength(std.ArrayList(u8), strMatr)) return error.notRectMatr;
+    const n = strMatr.items.len;
+    const m = strMatr.items[0].items.len;
+    const x: [][]T = try allocator.alloc([]T, n);
+    for (x) |*xi| xi.* = try allocator.alloc(T, m);
+    if (@typeInfo(T) == .int) {
+        for (0..n) |i|
+            for (0..m) |j| {
+                const el = strMatr.items[i].items[j].items;
+                x[i][j] = try std.fmt.parseInt(T, el, 10);
+            };
+    } else {
+        for (0..n) |i|
+            for (0..m) |j| {
+                const el = strMatr.items[i].items[j].items;
+                x[i][j] = try std.fmt.parseFloat(T, el);
+            };
+    }
+
     return x;
 }
 
-pub fn readData(filename: []const u8, n: usize, m: usize) ![][]f64 {
-    const xArr: []f64 = try readArrayFromFile(f64, filename);
-    defer std.heap.c_allocator.free(xArr);
-    return try arrayToMatr(f64, xArr, n, m);
+pub fn readData(filename: []const u8, allocator: std.mem.Allocator) ![][]f64 {
+    const x_str = try readMatrFromCSV(filename, allocator);
+    defer {
+        for (x_str.items) |*xi| {
+            for ((xi.*).items) |*xij| {
+                xij.deinit();
+            }
+            xi.deinit();
+        }
+        x_str.deinit();
+    }
+    return try getMatrFromStrMatr(f64, x_str, allocator);
 }
 
 pub fn writeResult(filename: []const u8, array: []usize) !void {
