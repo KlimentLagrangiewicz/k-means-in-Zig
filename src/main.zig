@@ -1,16 +1,13 @@
 const std = @import("std");
-const kmeans = @import("k-means");
+const k_means = @import("k-means");
 const help = @import("help");
 
-pub fn main() !void {
-    const used_alloctor = std.heap.c_allocator;
-    // or:
-    //var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    //defer _ = gpa.deinit();
-    //const used_alloctor = gpa.allocator();
+const c_alloctor = std.heap.c_allocator;
 
-    const args = try std.process.argsAlloc(used_alloctor);
-    defer std.process.argsFree(used_alloctor, args);
+pub fn main() !void {
+    const args = try std.process.argsAlloc(c_alloctor);
+    defer std.process.argsFree(c_alloctor, args);
+
     if (args.len < 3) {
         try std.io.getStdOut().writer().print("Not enough parameters\n", .{});
     } else {
@@ -20,10 +17,10 @@ pub fn main() !void {
             std.process.exit(1);
         }
 
-        const x: [][]f64 = try help.readData(args[1], used_alloctor);
+        const x: [][]f64 = try help.readData(args[1], c_alloctor);
         defer {
-            for (x) |*xi| used_alloctor.free(xi.*);
-            used_alloctor.free(x);
+            for (x) |*xi| c_alloctor.free(xi.*);
+            c_alloctor.free(x);
         }
 
         if (k > x.len) {
@@ -31,16 +28,26 @@ pub fn main() !void {
             std.process.exit(1);
         }
 
+        try k_means.scaling(x);
+
+        var kmeans = k_means.kMeans.getKMeans(null);
+        defer kmeans.deinit();
+
+        try kmeans.init(k);
+
         const start = try std.time.Instant.now();
-        const y: []usize = try kmeans.kmeans(x, k, used_alloctor);
-        defer used_alloctor.free(y);
+        try kmeans.fit(x);
         const end = try std.time.Instant.now();
         const elapsed_us = end.since(start) / 1000;
 
+        const y: []usize = try kmeans.predict(x);
+        defer c_alloctor.free(y);
+
         try std.io.getStdOut().writer().print("Time for k-means clustering: {} usec\n", .{elapsed_us});
         if (args.len > 4) {
-            const perfect: []usize = try help.readArrayFromFile(usize, args[4], used_alloctor);
-            defer used_alloctor.free(perfect);
+            const perfect: []usize = try help.readArrayFromFile(usize, args[4], c_alloctor);
+            defer c_alloctor.free(perfect);
+
             var p: f64 = undefined;
             var rc: f64 = undefined;
             var cdi: f64 = undefined;

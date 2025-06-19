@@ -1,5 +1,97 @@
 const std = @import("std");
 
+const c_alloctor = std.heap.c_allocator;
+
+fn checkSlicesLen(x: []const []const f64) !bool {
+    const lenFirst = x.ptr[0].len;
+    for (x[1..]) |xi| {
+        if (xi.len != lenFirst) return false;
+    }
+    return true;
+}
+
+fn free(comptime T: type, x: *[][]T, allocator: std.mem.Allocator) !void {
+    if (x.*.len != 0) {
+        for (x.*) |*xi| {
+            allocator.free(xi.*);
+        }
+        allocator.free(x.*);
+    }
+}
+
+fn copyMatr(x: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
+    const res: [][]f64 = try allocator.alloc([]f64, x.len);
+    for (x, res) |xi, *resi| {
+        resi.* = try allocator.alloc(f64, xi.len);
+        @memcpy(resi.*, xi);
+    }
+    return res;
+}
+
+pub const kMeans = struct {
+    data: [][]f64 = undefined, // data
+    centers: [][]f64 = undefined, // cluster centers
+    n_clusters: usize = 0, // number of clusters
+
+    //de-facto constructor
+    pub fn getKMeans(k: ?usize) kMeans {
+        if (k) |v| {
+            return .{ .n_clusters = v, .centers = undefined, .data = undefined };
+        }
+        return .{ .n_clusters = 0, .centers = undefined, .data = undefined };
+    }
+
+    //initializator
+    pub fn init(self: *kMeans, k: usize) !void {
+        self.n_clusters = k;
+    }
+
+    // returns cluster centers
+    pub fn get_centers(self: kMeans) ![][]f64 {
+        if (self.centers.len == 0 and (self.data.len == 0 or self.n_clusters == 0)) return error.EmptyCenters;
+        if (self.centers.len == 0 and self.data.len != 0 and self.n_clusters != 0) {
+            return try kmeans_cores(self.data, self.n_clusters, c_alloctor);
+        }
+        return self.centers;
+    }
+
+    //fit model
+    pub fn fit(self: *kMeans, x: [][]f64) !void {
+        if (x.len == 0 or self.n_clusters == 0) return error.ErrorFit;
+
+        try free(f64, &self.data, c_alloctor);
+        try free(f64, &self.centers, c_alloctor);
+
+        self.data = try copyMatr(x, c_alloctor);
+
+        self.centers = try kmeans_cores(self.data, self.n_clusters, c_alloctor);
+    }
+
+    // get predictions
+    pub fn predict(self: kMeans, x: []const []const f64) ![]usize {
+        if (x.len == 0) return error.EmptyInput;
+        if (!try checkSlicesLen(x)) return error.UnequalLenOfInput;
+
+        if (self.centers.len == 0) {
+            if (self.n_clusters == 0) return error.ErrorPredict;
+            return try kmeans_y(x, self.n_clusters, c_alloctor);
+        } else {
+            if (self.centers[0].len != x[0].len) {
+                if (self.n_clusters == 0) return error.UnifiedNumberOfClusters;
+                return try kmeans_y(x, self.n_clusters, c_alloctor);
+            }
+            return try getPartition(x, self.centers, c_alloctor);
+        }
+    }
+
+    //de-facto destructor
+    pub fn deinit(self: *kMeans) void {
+        try free(f64, &self.centers, c_alloctor);
+        try free(f64, &self.data, c_alloctor);
+        self.n_clusters = 0;
+    }
+};
+
 pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     if (y.len != x.len) return error.IterableLengthMismatch;
 
@@ -12,15 +104,13 @@ pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     return std.math.sqrt(sum);
 }
 
-pub fn scaling(X: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
-    const n: usize = X.len;
-    const m: usize = X[0].len;
-    const x: [][]f64 = try allocator.alloc([]f64, n);
-    for (x) |*xi| xi.* = try allocator.alloc(f64, m);
+pub fn scaling(x: [][]f64) !void {
+    const n: usize = x.len;
+    const m: usize = x[0].len;
     for (0..m) |j| {
         var ex: f64 = 0;
         var exx: f64 = 0;
-        for (X) |xi| {
+        for (x) |xi| {
             const v = xi[j];
             ex += v;
             exx = @mulAdd(f64, v, v, exx);
@@ -29,12 +119,10 @@ pub fn scaling(X: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
         exx = exx / @as(f64, @floatFromInt(n)) - ex * ex;
         exx = if (exx == 0.0) 1.0 else 1.0 / std.math.sqrt(exx);
 
-        for (x, X) |*xi, Xi| {
-            xi.*[j] = (Xi[j] - ex) * exx;
+        for (x) |*xi| {
+            xi.*[j] = (xi.*[j] - ex) * exx;
         }
     }
-
-    return x;
 }
 
 fn getCluster(x: []const f64, c: []const []const f64) !usize {
@@ -141,13 +229,15 @@ fn detStartPartition(x: []const []const f64, c: []const []const f64, nums: []usi
     return y;
 }
 
-pub fn kmeans(X: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
-    const x: [][]f64 = try scaling(X, allocator);
-    defer {
-        for (x) |*xi| allocator.free(xi.*);
-        allocator.free(x);
-    }
+fn getPartition(x: []const []const f64, c: []const []const f64, allocator: std.mem.Allocator) ![]usize {
+    const y: []usize = try allocator.alloc(usize, x.len);
 
+    for (x, y) |xi, *yi| yi.* = try getCluster(xi, c);
+
+    return y;
+}
+
+fn kmeans_y(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
     const c: [][]f64 = try detCores(x, k, allocator);
     defer {
         for (c) |*ci| allocator.free(ci.*);
@@ -163,19 +253,42 @@ pub fn kmeans(X: []const []const f64, k: usize, allocator: std.mem.Allocator) ![
     return y;
 }
 
-// k-means without scaling data at the beginning
-pub fn kmeans_ws(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
-    const c: [][]f64 = try detCores(x, k, allocator);
-    defer {
-        for (c) |*ci| allocator.free(ci.*);
-        allocator.free(c);
+fn calcCores(x: []const []const f64, y: []const usize, k: usize, allocator: std.mem.Allocator) ![][]f64 {
+    if (k == 0) return error.IncorrectLen;
+    const c: [][]f64 = try allocator.alloc([]f64, k);
+    for (c) |*ci| {
+        ci.* = try allocator.alloc(f64, x[0].len);
     }
+    for (c) |*ci| @memset(ci.*, 0.0);
+
+    const nums: []usize = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+    @memset(nums, 0);
+
+    for (y, x) |yi, xi| {
+        const c_yi = c[yi];
+        nums[yi] += 1;
+        for (c_yi, xi) |*c_yi_j, xij| c_yi_j.* += xij;
+    }
+
+    for (c, nums) |ci, count| {
+        const inv = 1.0 / @as(f64, @floatFromInt(count));
+        for (ci) |*cij| {
+            cij.* *= inv;
+        }
+    }
+    return c;
+}
+
+fn kmeans_cores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
+    const c: [][]f64 = try detCores(x, k, allocator);
 
     const nums = try allocator.alloc(usize, k);
     defer allocator.free(nums);
 
     const y: []usize = try detStartPartition(x, c, nums, allocator);
+    defer allocator.free(y);
     while (try checkPartition(x, c, y, nums)) {}
 
-    return y;
+    return c;
 }
