@@ -1,41 +1,37 @@
 const std = @import("std");
-const setZero = std.crypto.utils.secureZero;
 
 pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     if (y.len != x.len) return error.IterableLengthMismatch;
 
     var sum: f64 = 0.0;
-    for (y, x) |i, j| sum += (i - j) * (i - j);
+    for (y, x) |yi, xi| {
+        const d = yi - xi;
+        sum = @mulAdd(f64, d, d, sum);
+    }
 
     return std.math.sqrt(sum);
 }
 
-pub fn autoscaling(X: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
+pub fn scaling(X: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
     const n: usize = X.len;
     const m: usize = X[0].len;
-    const ex: []f64 = try allocator.alloc(f64, m);
-    defer allocator.free(ex);
-    const exx: []f64 = try allocator.alloc(f64, m);
-    defer allocator.free(exx);
-    setZero(f64, ex);
-    setZero(f64, exx);
-
-    for (X) |xi|
-        for (xi, ex, exx) |xij, *exj, *exxj| {
-            exj.* += xij;
-            exxj.* += xij * xij;
-        };
-
-    for (ex, exx) |*exi, *exxi| {
-        exi.* /= @floatFromInt(n);
-        exxi.* = @abs(exxi.* / @as(f64, @floatFromInt(n)) - exi.* * exi.*);
-        exxi.* = if (exxi.* == 0.0) 1.0 else 1.0 / std.math.sqrt(exxi.*);
-    }
-
     const x: [][]f64 = try allocator.alloc([]f64, n);
-    for (x, X) |*xi, Xi| {
-        xi.* = try allocator.alloc(f64, m);
-        for (xi.*, Xi, ex, exx) |*xij, Xij, exj, exxj| xij.* = (Xij - exj) * exxj;
+    for (x) |*xi| xi.* = try allocator.alloc(f64, m);
+    for (0..m) |j| {
+        var ex: f64 = 0;
+        var exx: f64 = 0;
+        for (X) |xi| {
+            const v = xi[j];
+            ex += v;
+            exx = @mulAdd(f64, v, v, exx);
+        }
+        ex /= @floatFromInt(n);
+        exx = exx / @as(f64, @floatFromInt(n)) - ex * ex;
+        exx = if (exx == 0.0) 1.0 else 1.0 / std.math.sqrt(exx);
+
+        for (x, X) |*xi, Xi| {
+            xi.*[j] = (Xi[j] - ex) * exx;
+        }
     }
 
     return x;
@@ -57,15 +53,21 @@ fn getCluster(x: []const f64, c: []const []const f64) !usize {
 }
 
 fn checkPartition(x: []const []const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
-    for (c) |*ci| setZero(f64, ci.*);
+    for (c) |*ci| @memset(ci.*, 0.0);
+
     for (y, x) |yi, xi| {
-        for (c[yi], xi) |*c_yi, xij| c_yi.* += xij;
-    }
-    for (c, nums) |ci, count| {
-        for (ci) |*cij| cij.* /= @floatFromInt(count);
+        const c_yi = c[yi];
+        for (c_yi, xi) |*c_yi_j, xij| c_yi_j.* += xij;
     }
 
-    setZero(usize, nums);
+    for (c, nums) |ci, count| {
+        const inv = 1.0 / @as(f64, @floatFromInt(count));
+        for (ci) |*cij| {
+            cij.* *= inv;
+        }
+    }
+
+    @memset(nums, 0);
     var flag: bool = false;
     for (x, y) |xi, *yi| {
         const f: usize = try getCluster(xi, c);
@@ -100,12 +102,14 @@ test "test 3 contain fun" {
     try std.testing.expectEqual(false, try contain(&x, 1));
 }
 
-fn getNums(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
-    var random = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
+fn getUnique(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
+    if (k > n) return error.ImpossibilityGenUniq;
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
+    const rnd = prng.random();
     const res: []usize = try allocator.alloc(usize, k);
     for (0..k) |i| {
-        var val = random.random().intRangeAtMost(usize, 0, n - 1);
-        while (try contain(res[0..i], val)) : (val = random.random().intRangeAtMost(usize, 0, n - 1)) {}
+        var val = rnd.intRangeAtMost(usize, 0, n - 1);
+        while (try contain(res[0..i], val)) : (val = rnd.intRangeAtMost(usize, 0, n - 1)) {}
 
         res[i] = val;
     }
@@ -115,13 +119,13 @@ fn getNums(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
 
 fn detCores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
     const m = x[0].len;
-    const nums = try getNums(x.len, k, allocator);
+    const nums = try getUnique(x.len, k, allocator);
     defer allocator.free(nums);
 
     const c: [][]f64 = try allocator.alloc([]f64, k);
-    for (c, nums) |*ci, count| {
+    for (c, nums) |*ci, idx| {
         ci.* = try allocator.alloc(f64, m);
-        for (ci.*, x[count]) |*cij, xij| cij.* = xij;
+        std.mem.copyForwards(f64, ci.*, x[idx]);
     }
 
     return c;
@@ -129,7 +133,7 @@ fn detCores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][
 
 fn detStartPartition(x: []const []const f64, c: []const []const f64, nums: []usize, allocator: std.mem.Allocator) ![]usize {
     const y: []usize = try allocator.alloc(usize, x.len);
-    setZero(usize, nums);
+    @memset(nums, 0);
     for (x, y) |xi, *yi| {
         yi.* = try getCluster(xi, c);
         nums[yi.*] += 1;
@@ -138,7 +142,7 @@ fn detStartPartition(x: []const []const f64, c: []const []const f64, nums: []usi
 }
 
 pub fn kmeans(X: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
-    const x: [][]f64 = try autoscaling(X, allocator);
+    const x: [][]f64 = try scaling(X, allocator);
     defer {
         for (x) |*xi| allocator.free(xi.*);
         allocator.free(x);

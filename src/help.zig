@@ -154,7 +154,7 @@ pub fn allRowsHaveEqualLength(comptime T: type, list: std.ArrayList(std.ArrayLis
     return true;
 }
 
-pub fn getMatrFromStrMatr(comptime T: type, strMatr: std.ArrayList(std.ArrayList(std.ArrayList(u8))), allocator: std.mem.Allocator) ![][]T {
+fn getMatrFromStrMatr(comptime T: type, strMatr: std.ArrayList(std.ArrayList(std.ArrayList(u8))), allocator: std.mem.Allocator) ![][]T {
     if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted as elements of matrix");
     if (!allRowsHaveEqualLength(std.ArrayList(u8), strMatr)) return error.notRectMatr;
     const n = strMatr.items.len;
