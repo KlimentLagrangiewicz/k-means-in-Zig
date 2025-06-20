@@ -1,0 +1,23 @@
+root                      = true
+
+# General settings
+[*]
+charset                   = utf-8
+end_of_line               = lf     # \n
+insert_final_newline      = true   # an empty line at the end of the file
+trim_trailing_whitespace  = true   # cleaning spaces at the end of the line
+
+# Source code files written in Zig language and package manager file
+[*.{zig,zig.zon}]
+indent_style              = space
+indent_size               = 4
+
+# JSON
+[*.json]
+indent_style              = space
+indent_size               = 2
+
+# Documentation
+[*.md]
+trim_trailing_whitespace  = false
+indent_size               = 4

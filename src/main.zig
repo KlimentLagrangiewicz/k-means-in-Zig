@@ -2,11 +2,11 @@ const std = @import("std");
 const k_means = @import("k-means");
 const help = @import("help");
 
-const c_alloctor = std.heap.c_allocator;
+const c_allocator = std.heap.c_allocator;
 
 pub fn main() !void {
-    const args = try std.process.argsAlloc(c_alloctor);
-    defer std.process.argsFree(c_alloctor, args);
+    const args = try std.process.argsAlloc(c_allocator);
+    defer std.process.argsFree(c_allocator, args);
 
     if (args.len < 3) {
         try std.io.getStdOut().writer().print("Not enough parameters\n", .{});
@@ -17,10 +17,10 @@ pub fn main() !void {
             std.process.exit(1);
         }
 
-        const x: [][]f64 = try help.readData(args[1], c_alloctor);
+        const x: [][]f64 = try help.readData(args[1], c_allocator);
         defer {
-            for (x) |*xi| c_alloctor.free(xi.*);
-            c_alloctor.free(x);
+            for (x) |*xi| c_allocator.free(xi.*);
+            c_allocator.free(x);
         }
 
         if (k > x.len) {
@@ -30,7 +30,7 @@ pub fn main() !void {
 
         try k_means.scaling(x);
 
-        var kmeans = k_means.kMeans.getKMeans(null);
+        var kmeans = k_means.kMeans.getKMeans(c_allocator, null);
         defer kmeans.deinit();
 
         try kmeans.init(k);
@@ -41,12 +41,12 @@ pub fn main() !void {
         const elapsed_us = end.since(start) / 1000;
 
         const y: []usize = try kmeans.predict(x);
-        defer c_alloctor.free(y);
+        defer c_allocator.free(y);
 
         try std.io.getStdOut().writer().print("Time for k-means clustering: {} usec\n", .{elapsed_us});
         if (args.len > 4) {
-            const perfect: []usize = try help.readArrayFromFile(usize, args[4], c_alloctor);
-            defer c_alloctor.free(perfect);
+            const perfect: []usize = try help.readArrayFromFile(usize, args[4], c_allocator);
+            defer c_allocator.free(perfect);
 
             var p: f64 = undefined;
             var rc: f64 = undefined;

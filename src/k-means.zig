@@ -1,28 +1,23 @@
 const std = @import("std");
 
-const c_alloctor = std.heap.c_allocator;
-
-fn checkSlicesLen(x: []const []const f64) !bool {
+fn checkSlicesLen(comptime T: type, x: []const []const T) !bool {
     const lenFirst = x.ptr[0].len;
-    for (x[1..]) |xi| {
-        if (xi.len != lenFirst) return false;
-    }
+
+    for (x[1..]) |xi| if (xi.len != lenFirst) return false;
     return true;
 }
 
 fn free(comptime T: type, x: *[][]T, allocator: std.mem.Allocator) !void {
     if (x.*.len != 0) {
-        for (x.*) |*xi| {
-            allocator.free(xi.*);
-        }
+        for (x.*) |*xi| allocator.free(xi.*);
         allocator.free(x.*);
     }
 }
 
-fn copyMatr(x: []const []const f64, allocator: std.mem.Allocator) ![][]f64 {
-    const res: [][]f64 = try allocator.alloc([]f64, x.len);
+fn copyMatr(comptime T: type, x: []const []const T, allocator: std.mem.Allocator) ![][]T {
+    const res: [][]T = try allocator.alloc([]T, x.len);
     for (x, res) |xi, *resi| {
-        resi.* = try allocator.alloc(f64, xi.len);
+        resi.* = try allocator.alloc(T, xi.len);
         @memcpy(resi.*, xi);
     }
     return res;
@@ -32,13 +27,13 @@ pub const kMeans = struct {
     data: [][]f64 = undefined, // data
     centers: [][]f64 = undefined, // cluster centers
     n_clusters: usize = 0, // number of clusters
+    allocator: std.mem.Allocator = std.heap.c_allocator, // memory allocator
 
     //de-facto constructor
-    pub fn getKMeans(k: ?usize) kMeans {
-        if (k) |v| {
-            return .{ .n_clusters = v, .centers = undefined, .data = undefined };
-        }
-        return .{ .n_clusters = 0, .centers = undefined, .data = undefined };
+    pub fn getKMeans(allocator: ?std.mem.Allocator, k: ?usize) kMeans {
+        const _k = if (k) |v| v else 0;
+        const _allocator = if (allocator) |alloc| alloc else std.heap.c_allocator;
+        return .{ .n_clusters = _k, .centers = undefined, .data = undefined, .allocator = _allocator };
     }
 
     //initializator
@@ -50,7 +45,7 @@ pub const kMeans = struct {
     pub fn get_centers(self: kMeans) ![][]f64 {
         if (self.centers.len == 0 and (self.data.len == 0 or self.n_clusters == 0)) return error.EmptyCenters;
         if (self.centers.len == 0 and self.data.len != 0 and self.n_clusters != 0) {
-            return try kmeans_cores(self.data, self.n_clusters, c_alloctor);
+            return try kmeans_cores(self.data, self.n_clusters, self.allocator);
         }
         return self.centers;
     }
@@ -59,35 +54,32 @@ pub const kMeans = struct {
     pub fn fit(self: *kMeans, x: [][]f64) !void {
         if (x.len == 0 or self.n_clusters == 0) return error.ErrorFit;
 
-        try free(f64, &self.data, c_alloctor);
-        try free(f64, &self.centers, c_alloctor);
+        self.data = try copyMatr(f64, x, self.allocator);
 
-        self.data = try copyMatr(x, c_alloctor);
-
-        self.centers = try kmeans_cores(self.data, self.n_clusters, c_alloctor);
+        self.centers = try kmeans_cores(self.data, self.n_clusters, self.allocator);
     }
 
     // get predictions
     pub fn predict(self: kMeans, x: []const []const f64) ![]usize {
         if (x.len == 0) return error.EmptyInput;
-        if (!try checkSlicesLen(x)) return error.UnequalLenOfInput;
+        if (!try checkSlicesLen(f64, x)) return error.UnequalLenOfInput;
 
         if (self.centers.len == 0) {
             if (self.n_clusters == 0) return error.ErrorPredict;
-            return try kmeans_y(x, self.n_clusters, c_alloctor);
+            return try kmeans_y(x, self.n_clusters, self.allocator);
         } else {
             if (self.centers[0].len != x[0].len) {
                 if (self.n_clusters == 0) return error.UnifiedNumberOfClusters;
-                return try kmeans_y(x, self.n_clusters, c_alloctor);
+                return try kmeans_y(x, self.n_clusters, self.allocator);
             }
-            return try getPartition(x, self.centers, c_alloctor);
+            return try getPartition(x, self.centers, self.allocator);
         }
     }
 
     //de-facto destructor
     pub fn deinit(self: *kMeans) void {
-        try free(f64, &self.centers, c_alloctor);
-        try free(f64, &self.data, c_alloctor);
+        try free(f64, &self.centers, self.allocator);
+        try free(f64, &self.data, self.allocator);
         self.n_clusters = 0;
     }
 };
@@ -167,7 +159,7 @@ fn checkPartition(x: []const []const f64, c: [][]f64, y: []usize, nums: []usize)
     return flag;
 }
 
-fn contain(y: []const usize, val: usize) !bool {
+fn contain(comptime T: type, y: []const T, val: T) !bool {
     for (y) |yi| if (yi == val) return true;
     return false;
 }
@@ -175,19 +167,19 @@ fn contain(y: []const usize, val: usize) !bool {
 test "test 1 contain fun" {
     const x = [_]usize{ 0, 1 };
 
-    try std.testing.expectEqual(true, try contain(&x, 1));
+    try std.testing.expectEqual(true, try contain(usize, &x, 1));
 }
 
 test "test 2 contain fun" {
     const x = [_]usize{ 0, 1 };
 
-    try std.testing.expectEqual(false, try contain(&x, 3));
+    try std.testing.expectEqual(false, try contain(usize, &x, 3));
 }
 
 test "test 3 contain fun" {
     const x = [_]usize{};
 
-    try std.testing.expectEqual(false, try contain(&x, 1));
+    try std.testing.expectEqual(false, try contain(usize, &x, 1));
 }
 
 fn getUnique(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
@@ -197,7 +189,7 @@ fn getUnique(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
     const res: []usize = try allocator.alloc(usize, k);
     for (0..k) |i| {
         var val = rnd.intRangeAtMost(usize, 0, n - 1);
-        while (try contain(res[0..i], val)) : (val = rnd.intRangeAtMost(usize, 0, n - 1)) {}
+        while (try contain(usize, res[0..i], val)) : (val = rnd.intRangeAtMost(usize, 0, n - 1)) {}
 
         res[i] = val;
     }
