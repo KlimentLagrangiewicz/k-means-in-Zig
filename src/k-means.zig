@@ -24,62 +24,91 @@ fn copyMatr(comptime T: type, x: []const []const T, allocator: std.mem.Allocator
 }
 
 pub const kMeans = struct {
-    data: [][]f64 = undefined, // data
-    centers: [][]f64 = undefined, // cluster centers
+    centers: ?[][]f64 = null, // cluster centers
     n_clusters: usize = 0, // number of clusters
     allocator: std.mem.Allocator = std.heap.c_allocator, // memory allocator
 
-    //de-facto constructor
+    // de-facto constructor
     pub fn getKMeans(allocator: ?std.mem.Allocator, k: ?usize) kMeans {
         const _k = if (k) |v| v else 0;
         const _allocator = if (allocator) |alloc| alloc else std.heap.c_allocator;
-        return .{ .n_clusters = _k, .centers = undefined, .data = undefined, .allocator = _allocator };
+        return .{ .n_clusters = _k, .centers = null, .allocator = _allocator };
     }
 
-    //initializator
+    // initializator
     pub fn init(self: *kMeans, k: usize) !void {
         self.n_clusters = k;
     }
 
-    // returns cluster centers
-    pub fn get_centers(self: kMeans) ![][]f64 {
-        if (self.centers.len == 0 and (self.data.len == 0 or self.n_clusters == 0)) return error.EmptyCenters;
-        if (self.centers.len == 0 and self.data.len != 0 and self.n_clusters != 0) {
-            return try kmeans_cores(self.data, self.n_clusters, self.allocator);
-        }
-        return self.centers;
+    // returns reference on cluster centers
+    pub fn getCenters(self: kMeans) ![][]f64 {
+        if (self.centers) |c| return c;
+        return error.EmptyCenters;
     }
 
-    //fit model
+    // returns copy of cluster centers
+    pub fn getCentersCopy(self: kMeans) ![][]f64 {
+        if (self.centers) |c| return try copyMatr(f64, c, self.allocator);
+        return error.EmptyCenters;
+    }
+
+    //returns number of clusters
+    pub fn getNumOfClusters(self: kMeans) usize {
+        return self.n_clusters;
+    }
+
+    //return allocator
+    pub fn getAllocator(self: kMeans) std.mem.Allocator {
+        return self.allocator;
+    }
+
+    // fit model
     pub fn fit(self: *kMeans, x: [][]f64) !void {
         if (x.len == 0 or self.n_clusters == 0) return error.ErrorFit;
 
-        self.data = try copyMatr(f64, x, self.allocator);
+        if (!try checkSlicesLen(f64, x)) return error.UnequalLenOfInput;
 
-        self.centers = try kmeans_cores(self.data, self.n_clusters, self.allocator);
+        if (self.n_clusters > x.len) return error.IncorrectDataForFit;
+
+        if (self.centers) |_| {
+            try free(f64, &(self.centers.?), self.allocator);
+            self.centers = null;
+        }
+
+        self.centers = try kmeans_cores(x, self.n_clusters, self.allocator);
     }
 
     // get predictions
-    pub fn predict(self: kMeans, x: []const []const f64) ![]usize {
+    pub fn predict(self: *kMeans, x: []const []const f64) ![]usize {
         if (x.len == 0) return error.EmptyInput;
         if (!try checkSlicesLen(f64, x)) return error.UnequalLenOfInput;
 
-        if (self.centers.len == 0) {
-            if (self.n_clusters == 0) return error.ErrorPredict;
-            return try kmeans_y(x, self.n_clusters, self.allocator);
-        } else {
-            if (self.centers[0].len != x[0].len) {
-                if (self.n_clusters == 0) return error.UnifiedNumberOfClusters;
-                return try kmeans_y(x, self.n_clusters, self.allocator);
+        if (self.centers) |_| {
+            if ((self.centers.?).len == 0 or (self.centers.?)[0].len != x[0].len) {
+                if (self.n_clusters == 0) return error.EmptyNumOfClusters;
+
+                const y = try kmeans_y(x, self.n_clusters, self.allocator);
+
+                try free(f64, &(self.centers.?), self.allocator);
+                self.centers.? = try calcCores(x, y, self.n_clusters, self.allocator);
+
+                return y;
             }
-            return try getPartition(x, self.centers, self.allocator);
+            return try getPartition(x, self.centers.?, self.allocator);
         }
+
+        if (self.n_clusters == 0) return error.EmptyNumOfClusters;
+        const y = try kmeans_y(x, self.n_clusters, self.allocator);
+        self.centers = try calcCores(x, y, self.n_clusters, self.allocator);
+        return y;
     }
 
     //de-facto destructor
     pub fn deinit(self: *kMeans) void {
-        try free(f64, &self.centers, self.allocator);
-        try free(f64, &self.data, self.allocator);
+        if (self.centers) |_| {
+            try free(f64, &(self.centers.?), self.allocator);
+            self.centers = null;
+        }
         self.n_clusters = 0;
     }
 };
