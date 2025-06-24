@@ -52,12 +52,12 @@ pub const kMeans = struct {
         return error.EmptyCenters;
     }
 
-    //returns number of clusters
+    // returns number of clusters
     pub fn getNumOfClusters(self: kMeans) usize {
         return self.n_clusters;
     }
 
-    //return allocator
+    // returns allocator
     pub fn getAllocator(self: kMeans) std.mem.Allocator {
         return self.allocator;
     }
@@ -75,7 +75,7 @@ pub const kMeans = struct {
             self.centers = null;
         }
 
-        self.centers = try kmeans_cores(x, self.n_clusters, self.allocator);
+        self.centers = try kmeansCores(x, self.n_clusters, self.allocator);
     }
 
     // get predictions
@@ -87,7 +87,7 @@ pub const kMeans = struct {
             if ((self.centers.?).len == 0 or (self.centers.?)[0].len != x[0].len) {
                 if (self.n_clusters == 0) return error.EmptyNumOfClusters;
 
-                const y = try kmeans_y(x, self.n_clusters, self.allocator);
+                const y = try kmeansY(x, self.n_clusters, self.allocator);
 
                 try free(f64, &(self.centers.?), self.allocator);
                 self.centers.? = try calcCores(x, y, self.n_clusters, self.allocator);
@@ -98,12 +98,12 @@ pub const kMeans = struct {
         }
 
         if (self.n_clusters == 0) return error.EmptyNumOfClusters;
-        const y = try kmeans_y(x, self.n_clusters, self.allocator);
+        const y = try kmeansY(x, self.n_clusters, self.allocator);
         self.centers = try calcCores(x, y, self.n_clusters, self.allocator);
         return y;
     }
 
-    //de-facto destructor
+    // de-facto destructor
     pub fn deinit(self: *kMeans) void {
         if (self.centers) |_| {
             try free(f64, &(self.centers.?), self.allocator);
@@ -113,6 +113,7 @@ pub const kMeans = struct {
     }
 };
 
+// returns Euclidean distance between `y` and `x`
 pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     if (y.len != x.len) return error.IterableLengthMismatch;
 
@@ -125,7 +126,8 @@ pub fn getDistance(y: []const f64, x: []const f64) !f64 {
     return std.math.sqrt(sum);
 }
 
-pub fn scaling(x: [][]f64) !void {
+// scaler: x = (x - { mean of x }) / sqrt({ dispersion of x })
+pub fn scaling(x: []const []f64) !void {
     const n: usize = x.len;
     const m: usize = x[0].len;
     for (0..m) |j| {
@@ -146,6 +148,7 @@ pub fn scaling(x: [][]f64) !void {
     }
 }
 
+// returns number of cluster for point `x`
 fn getCluster(x: []const f64, c: []const []const f64) !usize {
     var res: usize = 0;
     var min_d: f64 = try getDistance(x, c[0]);
@@ -161,7 +164,7 @@ fn getCluster(x: []const f64, c: []const []const f64) !usize {
     return res;
 }
 
-fn checkPartition(x: []const []const f64, c: [][]f64, y: []usize, nums: []usize) !bool {
+fn checkPartition(x: []const []const f64, c: []const []f64, y: []usize, nums: []usize) !bool {
     for (c) |*ci| @memset(ci.*, 0.0);
 
     for (y, x) |yi, xi| {
@@ -258,7 +261,7 @@ fn getPartition(x: []const []const f64, c: []const []const f64, allocator: std.m
     return y;
 }
 
-fn kmeans_y(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
+fn kmeansY(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
     const c: [][]f64 = try detCores(x, k, allocator);
     defer {
         for (c) |*ci| allocator.free(ci.*);
@@ -279,8 +282,8 @@ fn calcCores(x: []const []const f64, y: []const usize, k: usize, allocator: std.
     const c: [][]f64 = try allocator.alloc([]f64, k);
     for (c) |*ci| {
         ci.* = try allocator.alloc(f64, x[0].len);
+        @memset(ci.*, 0.0);
     }
-    for (c) |*ci| @memset(ci.*, 0.0);
 
     const nums: []usize = try allocator.alloc(usize, k);
     defer allocator.free(nums);
@@ -301,7 +304,7 @@ fn calcCores(x: []const []const f64, y: []const usize, k: usize, allocator: std.
     return c;
 }
 
-fn kmeans_cores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
+fn kmeansCores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
     const c: [][]f64 = try detCores(x, k, allocator);
 
     const nums = try allocator.alloc(usize, k);

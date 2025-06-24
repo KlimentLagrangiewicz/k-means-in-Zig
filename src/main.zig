@@ -47,7 +47,6 @@ pub fn main() !void {
         if (args.len > 4) {
             const perfect: []usize = try help.readArrayFromFile(usize, args[4], c_allocator);
             defer c_allocator.free(perfect);
-
             var p: f64 = undefined;
             var rc: f64 = undefined;
             var cdi: f64 = undefined;

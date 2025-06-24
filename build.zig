@@ -2,36 +2,36 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const optimize = .ReleaseFast;
 
-    const kmeansMod = b.addModule("k-means", .{
+    const kmeans_module = b.addModule("k-means", .{
         .root_source_file = .{ .cwd_relative = "src/k-means.zig" },
         .optimize = optimize,
         .target = target,
         .link_libc = true,
     });
 
-    const helpMod = b.addModule("help", .{
+    const help_module = b.addModule("help", .{
         .root_source_file = .{ .cwd_relative = "src/help.zig" },
         .optimize = optimize,
         .target = target,
         .link_libc = true,
     });
 
-    const mainMod = b.addModule("main", .{
+    const main_module = b.addModule("main", .{
         .root_source_file = .{ .cwd_relative = "src/main.zig" },
         .optimize = optimize,
         .target = target,
         .link_libc = true,
         .imports = &.{
-            .{ .name = "help", .module = helpMod },
-            .{ .name = "k-means", .module = kmeansMod },
+            .{ .name = "help", .module = help_module },
+            .{ .name = "k-means", .module = kmeans_module },
         },
     });
 
     const exe: *std.Build.Step.Compile = b.addExecutable(.{
         .name = "kmeans",
-        .root_module = mainMod,
+        .root_module = main_module,
     });
     b.installArtifact(exe);
 
@@ -43,7 +43,7 @@ pub fn build(b: *std.Build) void {
     const run_step: *std.Build.Step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const kmeansModTests = b.addTest(.{
+    const kmeans_module_tests = b.addTest(.{
         .target = target,
         .optimize = optimize,
         .root_module = b.createModule(.{
@@ -52,12 +52,12 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .link_libc = true,
             .imports = &.{
-                .{ .name = "k-means", .module = kmeansMod },
+                .{ .name = "k-means", .module = kmeans_module },
             },
         }),
     });
 
-    const helpModTests = b.addTest(.{
+    const help_module_tests = b.addTest(.{
         .target = target,
         .optimize = optimize,
         .root_module = b.createModule(.{
@@ -66,19 +66,19 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .link_libc = true,
             .imports = &.{
-                .{ .name = "help", .module = helpMod },
+                .{ .name = "help", .module = help_module },
             },
         }),
     });
 
-    const kmeansPrivateTests = b.addTest(.{
+    const kmeans_private_tests = b.addTest(.{
         .target = target,
         .optimize = optimize,
-        .root_module = kmeansMod,
+        .root_module = kmeans_module,
     });
 
     const test_step = b.step("test", "Run all unit tests");
-    test_step.dependOn(&b.addRunArtifact(kmeansModTests).step);
-    test_step.dependOn(&b.addRunArtifact(helpModTests).step);
-    test_step.dependOn(&b.addRunArtifact(kmeansPrivateTests).step);
+    test_step.dependOn(&b.addRunArtifact(kmeans_module_tests).step);
+    test_step.dependOn(&b.addRunArtifact(help_module_tests).step);
+    test_step.dependOn(&b.addRunArtifact(kmeans_private_tests).step);
 }

@@ -52,6 +52,9 @@ And after that run the app.:
 ```
 ./zig-out/bin/kmeans ./datasets/wine.csv 3 ./datasets/new_res.txt ./datasets/wine_res.csv
 ```
+```
+./zig-out/bin/kmeans ./datasets/covtype.csv 7 ./datasets/new_res.txt ./datasets/covtype_res.csv
+```
 Unit testing:
 ```
 zig build test
