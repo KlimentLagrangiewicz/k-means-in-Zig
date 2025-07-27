@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const simd = @import("std").simd;
+
 fn checkSlicesLen(comptime T: type, x: []const []const T) !bool {
     const lenFirst = x.ptr[0].len;
 
@@ -23,123 +25,193 @@ fn copyMatr(comptime T: type, x: []const []const T, allocator: std.mem.Allocator
     return res;
 }
 
-pub const kMeans = struct {
-    centers: ?[][]f64 = null, // cluster centers
-    n_clusters: usize = 0, // number of clusters
-    allocator: std.mem.Allocator = std.heap.c_allocator, // memory allocator
+pub fn KMeans(comptime T: type, allocator: ?std.mem.Allocator, k: ?usize, _tol: ?T, _max_it: ?u64) type {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    return struct {
+        centers: ?[][]T = null, // cluster centers
+        n_clusters: usize = if (k) |v| v else 0, // number of clusters
+        allocator: std.mem.Allocator = if (allocator) |alloc| alloc else std.heap.c_allocator, // memory allocator
+        tol: ?T = _tol,
+        max_it: ?u64 = _max_it,
 
-    // de-facto constructor
-    pub fn getKMeans(allocator: ?std.mem.Allocator, k: ?usize) kMeans {
-        const _k = if (k) |v| v else 0;
-        const _allocator = if (allocator) |alloc| alloc else std.heap.c_allocator;
-        return .{ .n_clusters = _k, .centers = null, .allocator = _allocator };
-    }
-
-    // initializator
-    pub fn init(self: *kMeans, k: usize) !void {
-        self.n_clusters = k;
-    }
-
-    // returns reference on cluster centers
-    pub fn getCenters(self: kMeans) ![][]f64 {
-        if (self.centers) |c| return c;
-        return error.EmptyCenters;
-    }
-
-    // returns copy of cluster centers
-    pub fn getCentersCopy(self: kMeans) ![][]f64 {
-        if (self.centers) |c| return try copyMatr(f64, c, self.allocator);
-        return error.EmptyCenters;
-    }
-
-    // returns number of clusters
-    pub fn getNumOfClusters(self: kMeans) usize {
-        return self.n_clusters;
-    }
-
-    // returns allocator
-    pub fn getAllocator(self: kMeans) std.mem.Allocator {
-        return self.allocator;
-    }
-
-    // fit model
-    pub fn fit(self: *kMeans, x: [][]f64) !void {
-        if (x.len == 0 or self.n_clusters == 0) return error.ErrorFit;
-
-        if (!try checkSlicesLen(f64, x)) return error.UnequalLenOfInput;
-
-        if (self.n_clusters > x.len) return error.IncorrectDataForFit;
-
-        if (self.centers) |_| {
-            try free(f64, &(self.centers.?), self.allocator);
-            self.centers = null;
+        // initializator
+        pub fn init(self: *@This(), n_clusters: usize, _tol_: ?T, _max_it_: ?u64) !void {
+            self.n_clusters = n_clusters;
+            self.tol = _tol_;
+            self.max_it = _max_it_;
         }
 
-        self.centers = try kmeansCores(x, self.n_clusters, self.allocator);
-    }
+        // returns reference on cluster centers
+        pub fn getCenters(self: @This()) ![][]T {
+            if (self.centers) |c| return c;
+            return error.EmptyCenters;
+        }
 
-    // get predictions
-    pub fn predict(self: *kMeans, x: []const []const f64) ![]usize {
-        if (x.len == 0) return error.EmptyInput;
-        if (!try checkSlicesLen(f64, x)) return error.UnequalLenOfInput;
+        // returns copy of cluster centers
+        pub fn getCentersCopy(self: @This()) ![][]T {
+            if (self.centers) |c| return try copyMatr(T, c, self.allocator);
+            return error.EmptyCenters;
+        }
 
-        if (self.centers) |_| {
-            if ((self.centers.?).len == 0 or (self.centers.?)[0].len != x[0].len) {
-                if (self.n_clusters == 0) return error.EmptyNumOfClusters;
+        // returns number of clusters
+        pub fn getNumOfClusters(self: @This()) usize {
+            return self.n_clusters;
+        }
 
-                const y = try kmeansY(x, self.n_clusters, self.allocator);
+        // returns allocator
+        pub fn getAllocator(self: @This()) std.mem.Allocator {
+            return self.allocator;
+        }
 
-                try free(f64, &(self.centers.?), self.allocator);
-                self.centers.? = try calcCores(x, y, self.n_clusters, self.allocator);
+        // returns maximum number of iterations
+        pub fn getNumOfIterations(self: @This()) !u64 {
+            return if (self.max_it) |max_it_v| max_it_v else error.UndefinedValue;
+        }
 
-                return y;
+        //
+        pub fn getTol(self: @This()) !T {
+            return if (self.tol) |tol_v| tol_v else error.UndefinedValue;
+        }
+
+        //
+        pub fn fit(self: *@This(), x: [][]T) !void {
+            if (x.len == 0 or self.n_clusters == 0) return error.ErrorFit;
+
+            if (self.n_clusters > x.len) return error.IncorrectDataForFit;
+
+            if (self.centers) |_| {
+                try free(T, &(self.centers.?), self.allocator);
+                self.centers = null;
             }
-            return try getPartition(x, self.centers.?, self.allocator);
+
+            if (self.tol) |tol_v| {
+                if (self.max_it) |max_iter_v| {
+                    if (tol_v <= 0.0) {
+                        if (max_iter_v < 1) {
+                            self.centers = try kmeansCores(T, x, self.n_clusters, self.allocator);
+                        } else {
+                            self.centers = try kmeansCoresWithMaxIter(T, x, self.n_clusters, self.allocator, max_iter_v);
+                        }
+                    } else {
+                        if (max_iter_v < 1) {
+                            self.centers = try kmeansCoresWithTol(T, x, self.n_clusters, self.allocator, tol_v);
+                        } else {
+                            self.centers = try kmeansCoresWithTolAndMaxIter(T, x, self.n_clusters, self.allocator, tol_v, max_iter_v);
+                        }
+                    }
+                } else {
+                    if (tol_v <= 0.0) {
+                        self.centers = try kmeansCores(T, x, self.n_clusters, self.allocator);
+                    } else {
+                        self.centers = try kmeansCoresWithTol(T, x, self.n_clusters, self.allocator, tol_v);
+                    }
+                }
+            } else {
+                if (self.max_it) |max_iter_v| {
+                    if (max_iter_v < 1) {
+                        self.centers = try kmeansCores(T, x, self.n_clusters, self.allocator);
+                    } else {
+                        self.centers = try kmeansCoresWithMaxIter(T, x, self.n_clusters, self.allocator, max_iter_v);
+                    }
+                } else {
+                    self.centers = try kmeansCores(T, x, self.n_clusters, self.allocator);
+                }
+            }
         }
 
-        if (self.n_clusters == 0) return error.EmptyNumOfClusters;
-        const y = try kmeansY(x, self.n_clusters, self.allocator);
-        self.centers = try calcCores(x, y, self.n_clusters, self.allocator);
-        return y;
-    }
+        // get predictions
+        pub fn predict(self: *@This(), x: []const []const T) ![]usize {
+            if (x.len == 0) return error.EmptyInput;
+            if (!try checkSlicesLen(T, x)) return error.UnequalLenOfInput;
 
-    // de-facto destructor
-    pub fn deinit(self: *kMeans) void {
-        if (self.centers) |_| {
-            try free(f64, &(self.centers.?), self.allocator);
-            self.centers = null;
+            if (self.centers) |_| {
+                if ((self.centers.?).len == 0 or (self.centers.?)[0].len != x[0].len) {
+                    if (self.n_clusters == 0) return error.EmptyNumOfClusters;
+
+                    const y = try kmeansY(T, x, self.n_clusters, self.allocator);
+
+                    try free(T, &(self.centers.?), self.allocator);
+                    self.centers.? = try calcCores(T, x, y, self.n_clusters, self.allocator);
+
+                    return y;
+                }
+                return try getPartition(T, x, self.centers.?, self.allocator);
+            }
+
+            if (self.n_clusters == 0) return error.EmptyNumOfClusters;
+            const y = try kmeansY(T, x, self.n_clusters, self.allocator);
+            self.centers = try calcCores(T, x, y, self.n_clusters, self.allocator);
+            return y;
         }
-        self.n_clusters = 0;
-    }
-};
+
+        // de-facto destructor
+        pub fn deinit(self: *@This()) void {
+            if (self.centers) |_| {
+                try free(T, &(self.centers.?), self.allocator);
+                self.centers = null;
+            }
+            self.n_clusters = 0;
+        }
+    };
+}
 
 // returns Euclidean distance between `y` and `x`
-pub fn getDistance(y: []const f64, x: []const f64) !f64 {
-    if (y.len != x.len) return error.IterableLengthMismatch;
+// pub fn getDistance(comptime T: type, y: []const T, x: []const T) !T {
+//     if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+//     if (y.len != x.len) return error.DimensionsMismatch;
 
-    var sum: f64 = 0.0;
-    for (y, x) |yi, xi| {
-        const d = yi - xi;
-        sum = @mulAdd(f64, d, d, sum);
+//     var sum: T = 0.0;
+//     for (y, x) |yi, xi| {
+//         const d = yi - xi;
+//         sum += d * d;
+//     }
+//     return sum;
+// }
+
+// SIMD Euclidean distance between `a` and `b`
+pub fn getDistance(comptime T: type, a: []const T, b: []const T) !T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    if (a.len != b.len)
+        return error.DimensionsMismatch;
+
+    const vec_len = simd.suggestVectorLength(T) orelse 1;
+
+    const Vector = @Vector(vec_len, T);
+    var sum_sq: T = 0.0;
+
+    var i: usize = 0;
+    const end = a.len - (a.len % vec_len);
+
+    while (i < end) : (i += vec_len) {
+        const va = @as(Vector, a[i..][0..vec_len].*);
+        const vb = @as(Vector, b[i..][0..vec_len].*);
+        const d = va - vb;
+        sum_sq += @reduce(.Add, d * d);
     }
 
-    return std.math.sqrt(sum);
+    while (i < a.len) : (i += 1) {
+        const diff = a[i] - b[i];
+        sum_sq += diff * diff;
+    }
+
+    return sum_sq;
 }
 
 // scaler: x = (x - { mean of x }) / sqrt({ dispersion of x })
-pub fn scaling(x: []const []f64) !void {
+pub fn scaling(comptime T: type, x: []const []T) !void {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
     const n: usize = x.len;
     const m: usize = x[0].len;
     for (0..m) |j| {
-        var ex: f64 = 0;
-        var exx: f64 = 0;
+        var ex: T = 0.0;
+        var exx: T = 0.0;
         for (x) |xi| {
             const v = xi[j];
             ex += v;
-            exx = @mulAdd(f64, v, v, exx);
+            exx += v * v;
         }
         ex /= @floatFromInt(n);
-        exx = exx / @as(f64, @floatFromInt(n)) - ex * ex;
+        exx = exx / @as(T, @floatFromInt(n)) - ex * ex;
         exx = if (exx == 0.0) 1.0 else 1.0 / std.math.sqrt(exx);
 
         for (x) |*xi| {
@@ -149,12 +221,13 @@ pub fn scaling(x: []const []f64) !void {
 }
 
 // returns number of cluster for point `x`
-fn getCluster(x: []const f64, c: []const []const f64) !usize {
+fn getCluster(comptime T: type, x: []const T, c: []const []const T) !usize {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
     var res: usize = 0;
-    var min_d: f64 = try getDistance(x, c[0]);
+    var min_d: T = std.math.floatMax(T);
 
-    for (c[1..], 1..) |ci, i| {
-        const cur_d: f64 = try getDistance(x, ci);
+    for (c, 0..) |ci, i| {
+        const cur_d: T = try getDistance(T, x, ci);
         if (cur_d < min_d) {
             min_d = cur_d;
             res = i;
@@ -162,33 +235,6 @@ fn getCluster(x: []const f64, c: []const []const f64) !usize {
     }
 
     return res;
-}
-
-fn checkPartition(x: []const []const f64, c: []const []f64, y: []usize, nums: []usize) !bool {
-    for (c) |*ci| @memset(ci.*, 0.0);
-
-    for (y, x) |yi, xi| {
-        const c_yi = c[yi];
-        for (c_yi, xi) |*c_yi_j, xij| c_yi_j.* += xij;
-    }
-
-    for (c, nums) |ci, count| {
-        const inv = 1.0 / @as(f64, @floatFromInt(count));
-        for (ci) |*cij| {
-            cij.* *= inv;
-        }
-    }
-
-    @memset(nums, 0);
-    var flag: bool = false;
-    for (x, y) |xi, *yi| {
-        const f: usize = try getCluster(xi, c);
-        if (f != yi.*) flag = true;
-        yi.* = f;
-        nums[f] += 1;
-    }
-
-    return flag;
 }
 
 fn contain(comptime T: type, y: []const T, val: T) !bool {
@@ -216,6 +262,7 @@ test "test 3 contain fun" {
 
 fn getUnique(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
     if (k > n) return error.ImpossibilityGenUniq;
+
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp() - std.time.timestamp() * @as(comptime_int, 1000)));
     const rnd = prng.random();
     const res: []usize = try allocator.alloc(usize, k);
@@ -229,60 +276,94 @@ fn getUnique(n: usize, k: usize, allocator: std.mem.Allocator) ![]usize {
     return res;
 }
 
-fn detCores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
+fn detCores(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
     const m = x[0].len;
     const nums = try getUnique(x.len, k, allocator);
     defer allocator.free(nums);
 
-    const c: [][]f64 = try allocator.alloc([]f64, k);
+    const c: [][]T = try allocator.alloc([]T, k);
     for (c, nums) |*ci, idx| {
-        ci.* = try allocator.alloc(f64, m);
-        std.mem.copyForwards(f64, ci.*, x[idx]);
+        ci.* = try allocator.alloc(T, m);
+        @memcpy(ci.*, x[idx]);
     }
 
     return c;
 }
 
-fn detStartPartition(x: []const []const f64, c: []const []const f64, nums: []usize, allocator: std.mem.Allocator) ![]usize {
-    const y: []usize = try allocator.alloc(usize, x.len);
-    @memset(nums, 0);
-    for (x, y) |xi, *yi| {
-        yi.* = try getCluster(xi, c);
-        nums[yi.*] += 1;
-    }
-    return y;
-}
+fn getPartition(comptime T: type, x: []const []const T, c: []const []const T, allocator: std.mem.Allocator) ![]usize {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
 
-fn getPartition(x: []const []const f64, c: []const []const f64, allocator: std.mem.Allocator) ![]usize {
     const y: []usize = try allocator.alloc(usize, x.len);
 
-    for (x, y) |xi, *yi| yi.* = try getCluster(xi, c);
+    for (x, y) |xi, *yi| yi.* = try getCluster(T, xi, c);
 
     return y;
 }
 
-fn kmeansY(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![]usize {
-    const c: [][]f64 = try detCores(x, k, allocator);
+fn kmeansY(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator) ![]usize {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    const c: [][]T = try detCores(T, x, k, allocator);
     defer {
         for (c) |*ci| allocator.free(ci.*);
         allocator.free(c);
     }
 
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, c[0].len);
+
+    defer {
+        for (new_c) |*new_ci| allocator.free(new_ci.*);
+        allocator.free(new_c);
+    }
+
     const nums = try allocator.alloc(usize, k);
     defer allocator.free(nums);
 
-    const y: []usize = try detStartPartition(x, c, nums, allocator);
-    while (try checkPartition(x, c, y, nums)) {}
+    const y: []usize = try allocator.alloc(usize, x.len);
+
+    @memset(y, 0);
+
+    while (try checkPartition(T, x, c, new_c, y, nums)) {}
 
     return y;
 }
 
-fn calcCores(x: []const []const f64, y: []const usize, k: usize, allocator: std.mem.Allocator) ![][]f64 {
+// fn addToCore(comptime T: type, ci: []T, xi: []const T) !void {
+//     if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+//     if (ci.len != xi.len) return error.DimensionsMismatch;
+//     for (ci, xi) |*cij, xij| cij.* += xij;
+// }
+
+fn addToCore(comptime T: type, ci: []T, xi: []const T) !void {
+    if (ci.len != xi.len) return error.DimensionsMismatch;
+
+    const vec_len: comptime_int = comptime simd.suggestVectorLength(T) orelse 1;
+    const vec = @Vector(vec_len, T);
+
+    var i: usize = 0;
+    const simd_end = ci.len - ci.len % vec_len;
+
+    while (i < simd_end) : (i += vec_len) {
+        const c_ptr: *align(1) vec = @ptrCast(ci.ptr + i);
+        const x_ptr: *align(1) const vec = @ptrCast(xi.ptr + i);
+
+        c_ptr.* = c_ptr.* + x_ptr.*;
+    }
+
+    while (i < ci.len) : (i += 1)
+        ci[i] += xi[i];
+}
+
+fn calcCores(comptime T: type, x: []const []const T, y: []const usize, k: usize, allocator: std.mem.Allocator) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
     if (k == 0) return error.IncorrectLen;
-    const c: [][]f64 = try allocator.alloc([]f64, k);
+    const c: [][]T = try allocator.alloc([]T, k);
     for (c) |*ci| {
-        ci.* = try allocator.alloc(f64, x[0].len);
-        @memset(ci.*, 0.0);
+        ci.* = try allocator.alloc(T, x[0].len);
+        @memset(ci.*, 0);
     }
 
     const nums: []usize = try allocator.alloc(usize, k);
@@ -292,27 +373,289 @@ fn calcCores(x: []const []const f64, y: []const usize, k: usize, allocator: std.
     for (y, x) |yi, xi| {
         const c_yi = c[yi];
         nums[yi] += 1;
-        for (c_yi, xi) |*c_yi_j, xij| c_yi_j.* += xij;
+        try addToCore(T, c_yi, xi);
     }
 
     for (c, nums) |ci, count| {
-        const inv = 1.0 / @as(f64, @floatFromInt(count));
-        for (ci) |*cij| {
+        const inv = if (count == 0) 1.0 else 1.0 / @as(T, @floatFromInt(count));
+        for (ci) |*cij|
             cij.* *= inv;
-        }
     }
     return c;
 }
 
-fn kmeansCores(x: []const []const f64, k: usize, allocator: std.mem.Allocator) ![][]f64 {
-    const c: [][]f64 = try detCores(x, k, allocator);
+// fn calcNewCore(comptime T: type, new_ci: []const T, ci: []T, mul: T) !void {
+//     if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+//     if (new_ci.len != ci.len) return error.DimensionsMismatch;
+
+//     for (ci, new_ci) |*cij, new_cij| cij.* = new_cij * mul;
+// }
+
+fn calcNewCore(comptime T: type, new_ci: []const T, ci: []T, mul: T) !void {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    if (new_ci.len != ci.len) return error.DimensionsMismatch;
+
+    const vec_len: comptime_int = comptime simd.suggestVectorLength(T) orelse 1;
+    const vec = @Vector(vec_len, T);
+
+    const mul_vec: vec = @splat(mul);
+
+    var i: usize = 0;
+    const simd_end = ci.len - ci.len % vec_len;
+
+    while (i < simd_end) : (i += vec_len) {
+        const src_ptr: *align(1) const vec = @ptrCast(new_ci.ptr + i);
+        const dst_ptr: *align(1) vec = @ptrCast(ci.ptr + i);
+
+        dst_ptr.* = src_ptr.* * mul_vec;
+    }
+
+    while (i < ci.len) : (i += 1)
+        ci[i] = new_ci[i] * mul;
+}
+
+fn checkPartition(comptime T: type, x: []const []const T, c: []const []T, new_c: []const []T, y: []usize, nums: []usize) !bool {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    for (new_c) |new_ci| @memset(new_ci, 0);
+
+    @memset(nums, 0);
+    var flag: bool = false;
+    for (x, y) |xi, *yi| {
+        const f: usize = try getCluster(T, xi, c);
+        if (f != yi.*) flag = true;
+        yi.* = f;
+        nums[f] += 1;
+        try addToCore(T, new_c[f], xi);
+    }
+
+    for (c, new_c, nums) |ci, new_ci, count| {
+        const inv = if (count == 0) 1.0 else 1.0 / @as(T, @floatFromInt(count));
+        try calcNewCore(T, new_ci, ci, inv);
+    }
+
+    return flag;
+}
+
+fn kmeansCores(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    const c: [][]T = try detCores(T, x, k, allocator);
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, x[0].len);
+
+    defer {
+        for (new_c) |new_ci| allocator.free(new_ci);
+        allocator.free(new_c);
+    }
 
     const nums = try allocator.alloc(usize, k);
     defer allocator.free(nums);
 
-    const y: []usize = try detStartPartition(x, c, nums, allocator);
+    const y: []usize = try allocator.alloc(usize, x.len);
     defer allocator.free(y);
-    while (try checkPartition(x, c, y, nums)) {}
+
+    @memset(y, 0);
+
+    while (try checkPartition(T, x, c, new_c, y, nums)) {}
 
     return c;
+}
+
+fn checkCores(comptime T: type, c1: []const []const T, c2: []const []const T, tol: T) !bool {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    const pow2tol = tol * tol;
+    for (c1, c2) |c1i, c2i| {
+        const d = try getDistance(T, c1i, c2i);
+        if (d > pow2tol) return false;
+    }
+    return true;
+}
+
+// fn divCore(comptime T: type, ci: []T, mul: T) !void {
+//     if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+//     for (ci) |*cij| cij.* *= mul;
+// }
+
+fn divCore(comptime T: type, ci: []T, mul: T) !void {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    const vec_len: comptime_int = comptime simd.suggestVectorLength(T) orelse 1;
+    const vec = @Vector(vec_len, T);
+
+    const vec_mul: vec = @splat(mul);
+
+    var i: usize = 0;
+    const aligned_len = ci.len - ci.len % vec_len;
+
+    while (i < aligned_len) : (i += vec_len) {
+        const dst_ptr: *align(1) vec = @ptrCast(ci.ptr + i);
+        dst_ptr.* *= vec_mul;
+    }
+
+    while (i < ci.len) : (i += 1) {
+        ci[i] *= mul;
+    }
+}
+
+fn checkPartitionWithTol(comptime T: type, x: []const []const T, c: []const []T, new_c: []const []T, y: []usize, nums: []usize, tol: T) !bool {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    for (new_c) |new_ci| @memset(new_ci, 0);
+
+    @memset(nums, 0);
+    for (x, y) |xi, *yi| {
+        const f: usize = try getCluster(T, xi, c);
+        yi.* = f;
+        nums[f] += 1;
+        try addToCore(T, new_c[f], xi);
+    }
+
+    for (new_c, nums) |new_ci, count| {
+        const inv = if (count == 0) 1.0 else 1.0 / @as(T, @floatFromInt(count));
+        try divCore(T, new_ci, inv);
+    }
+
+    const flag = !try checkCores(T, c, new_c, tol);
+
+    for (c, new_c) |ci, new_ci|
+        @memcpy(ci, new_ci);
+
+    return flag;
+}
+
+fn kmeansCoresWithTol(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator, tol: T) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    const c: [][]T = try detCores(T, x, k, allocator);
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, x[0].len);
+
+    defer {
+        for (new_c) |new_ci| allocator.free(new_ci);
+        allocator.free(new_c);
+    }
+
+    const nums = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+
+    const y: []usize = try allocator.alloc(usize, x.len);
+    defer allocator.free(y);
+
+    @memset(y, 0);
+
+    while (try checkPartitionWithTol(T, x, c, new_c, y, nums, tol)) {}
+
+    return c;
+}
+
+fn kmeansCoresWithMaxIter(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator, max_it: u64) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    const c: [][]T = try detCores(T, x, k, allocator);
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, x[0].len);
+
+    defer {
+        for (new_c) |new_ci| allocator.free(new_ci);
+        allocator.free(new_c);
+    }
+
+    const nums = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+
+    const y: []usize = try allocator.alloc(usize, x.len);
+    defer allocator.free(y);
+
+    @memset(y, 0);
+    var i: u64 = 0;
+    while (try checkPartition(T, x, c, new_c, y, nums) and i < max_it) : (i += 1) {}
+
+    return c;
+}
+
+fn kmeansCoresWithTolAndMaxIter(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator, tol: T, max_it: u64) ![][]T {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+    const c: [][]T = try detCores(T, x, k, allocator);
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, x[0].len);
+
+    defer {
+        for (new_c) |new_ci| allocator.free(new_ci);
+        allocator.free(new_c);
+    }
+
+    const nums = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+
+    const y: []usize = try allocator.alloc(usize, x.len);
+    defer allocator.free(y);
+
+    @memset(y, 0);
+    var i: u64 = 0;
+    while (try checkPartitionWithTol(T, x, c, new_c, y, nums, tol) and i < max_it) : (i += 1) {}
+
+    return c;
+}
+
+fn kmeansYWithTol(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator, tol: T) ![]usize {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    const c: [][]T = try detCores(T, x, k, allocator);
+    defer {
+        for (c) |*ci| allocator.free(ci.*);
+        allocator.free(c);
+    }
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, c[0].len);
+
+    defer {
+        for (new_c) |*new_ci| allocator.free(new_ci.*);
+        allocator.free(new_c);
+    }
+
+    const nums = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+
+    const y: []usize = try allocator.alloc(usize, x.len);
+
+    @memset(y, 0);
+
+    while (try checkPartitionWithTol(T, x, c, new_c, y, nums, tol)) {}
+
+    return y;
+}
+
+fn kmeansYWithTolAndMaxIter(comptime T: type, x: []const []const T, k: usize, allocator: std.mem.Allocator, tol: T, max_it: u64) ![]usize {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
+    const c: [][]T = try detCores(T, x, k, allocator);
+    defer {
+        for (c) |*ci| allocator.free(ci.*);
+        allocator.free(c);
+    }
+
+    const new_c = try allocator.alloc([]T, k);
+    for (new_c) |*new_ci| new_ci.* = try allocator.alloc(T, c[0].len);
+
+    defer {
+        for (new_c) |*new_ci| allocator.free(new_ci.*);
+        allocator.free(new_c);
+    }
+
+    const nums = try allocator.alloc(usize, k);
+    defer allocator.free(nums);
+
+    const y: []usize = try allocator.alloc(usize, x.len);
+
+    @memset(y, 0);
+
+    var i: u64 = 0;
+    while (try checkPartitionWithTol(T, x, c, new_c, y, nums, tol) and i < max_it) : (i += 1) {}
+
+    return y;
 }

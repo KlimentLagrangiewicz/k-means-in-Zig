@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn readArrayFromFile(comptime T: type, file_name: []const u8, allocator: std.mem.Allocator) ![]T {
     if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted");
-    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
+    const file = std.fs.cwd().openFile(file_name, .{ .mode = .read_only }) catch |err| {
         try std.io.getStdOut().writer().print("Error during opening `{s}` file: {s}\n", .{ file_name, @errorName(err) });
         return err;
     };
@@ -82,7 +82,7 @@ pub fn readArrayFromFile(comptime T: type, file_name: []const u8, allocator: std
 }
 
 pub fn readMatrFromCSV(file_name: []const u8, allocator: std.mem.Allocator) !std.ArrayList(std.ArrayList(std.ArrayList(u8))) {
-    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
+    const file = std.fs.cwd().openFile(file_name, .{ .mode = .read_only }) catch |err| {
         try std.io.getStdOut().writer().print("Error during opening `{s}` file: {s}\n", .{ file_name, @errorName(err) });
         return err;
     };
@@ -178,7 +178,9 @@ fn getMatrFromStrMatr(comptime T: type, str_matr: std.ArrayList(std.ArrayList(st
     return x;
 }
 
-pub fn readData(file_name: []const u8, allocator: std.mem.Allocator) ![][]f64 {
+pub fn readData(comptime T: type, file_name: []const u8, allocator: std.mem.Allocator) ![][]T {
+    if (@typeInfo(T) != .float and @typeInfo(T) != .int) @compileError("Only ints and floats are accepted as elements of matrix");
+
     const x_str = try readMatrFromCSV(file_name, allocator);
     defer {
         for (x_str.items) |*xi| {
@@ -189,7 +191,7 @@ pub fn readData(file_name: []const u8, allocator: std.mem.Allocator) ![][]f64 {
         }
         x_str.deinit();
     }
-    return try getMatrFromStrMatr(f64, x_str, allocator);
+    return try getMatrFromStrMatr(T, x_str, allocator);
 }
 
 pub fn writeResult(file_name: []const u8, array: []usize) !void {
@@ -505,7 +507,9 @@ pub fn getSokalSneathSecondIndex(x: []const usize, y: []const usize) !f64 {
     return if (yynn == 0.0 and yn == 0 and ny == 0) 0.0 else yynn / (yynn + 0.5 * (@as(f64, @floatFromInt(yn)) + (@as(f64, @floatFromInt(ny)))));
 }
 
-pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f64, _cdi: *f64, _fmi: *f64, _hi: *f64, _ji: *f64, _ki: *f64, _mni: *f64, _phi: *f64, _rand: *f64, _rti: *f64, _rri: *f64, _s1i: *f64, _s2i: *f64) !void {
+pub fn getExternalIndices(comptime T: type, x: []const usize, y: []const usize, _p: *T, _rc: *T, _cdi: *T, _fmi: *T, _hi: *T, _ji: *T, _ki: *T, _mni: *T, _phi: *T, _rand: *T, _rti: *T, _rri: *T, _s1i: *T, _s2i: *T) !void {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
     if (x.len != y.len) {
         _p.* = 0.0;
         _rc.* = 0.0;
@@ -540,27 +544,29 @@ pub fn getExternalIndices(x: []const usize, y: []const usize, _p: *f64, _rc: *f6
             if (!x_eq and !y_eq) nn += 1;
         }
     }
-    const n_t: f64 = 0.5 * @as(f64, @floatFromInt(n)) * @as(f64, @floatFromInt(n - 1));
-    const yynn: f64 = @as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(nn));
-    const m: f64 = (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn))) * (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(ny)));
-    const k: f64 = (@as(f64, @floatFromInt(nn)) + @as(f64, @floatFromInt(yn))) * (@as(f64, @floatFromInt(nn)) + @as(f64, @floatFromInt(ny)));
-    _p.* = if (ny == 0 and yy == 0) 0.0 else @as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(ny)));
-    _rc.* = if (yy == 0 and yn == 0) 0.0 else @as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn)));
-    _cdi.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else 2.0 * @as(f64, @floatFromInt(yy)) / (2.0 * @as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn)) + @as(f64, @floatFromInt(ny)));
-    _fmi.* = if (yy == 0 and (yn == 0 or ny == 0)) 0.0 else @as(f64, @floatFromInt(yy)) / std.math.sqrt((@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn))) * (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(ny))));
-    _hi.* = if (m == 0.0 or k == 0.0) 0.0 else (n_t * @as(f64, @floatFromInt(yy)) - m) / std.math.sqrt(k * m);
-    _ji.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn)) + @as(f64, @floatFromInt(ny)));
-    _ki.* = if (yy == 0 and (ny == 0 or yn == 0)) 0.0 else 0.5 * ((@as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(ny)))) + (@as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(yn)))));
-    _mni.* = if (yn == 0 and ny == 0) 0.0 else (@as(f64, @floatFromInt(yn)) - @as(f64, @floatFromInt(ny))) / std.math.sqrt(@as(f64, @floatFromInt(yn)) + @as(f64, @floatFromInt(ny)));
-    _phi.* = if (m == 0.0 or k == 0.0) 0.0 else (@as(f64, @floatFromInt(yy)) * @as(f64, @floatFromInt(nn)) - @as(f64, @floatFromInt(yn)) * @as(f64, @floatFromInt(ny))) / (m * k);
-    _rand.* = if (n < 2) 0.0 else (@as(f64, @floatFromInt(yy)) + @as(f64, @floatFromInt(nn))) / n_t;
-    _rti.* = if (yy == 0 and nn == 0 and yn == 0 and ny == 0) 0.0 else yynn / (yynn + 2.0 * @as(f64, @floatFromInt(yn)) + 2.0 * @as(f64, @floatFromInt(ny)));
-    _rri.* = if (n < 2) 0.0 else @as(f64, @floatFromInt(yy)) / n_t;
-    _s1i.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @as(f64, @floatFromInt(yy)) / (@as(f64, @floatFromInt(yy)) + 2.0 * @as(f64, @floatFromInt(yn)) + 2.0 * @as(f64, @floatFromInt(ny)));
-    _s2i.* = if (yynn == 0.0 and yn == 0 and ny == 0) 0.0 else yynn / (yynn + 0.5 * (@as(f64, @floatFromInt(yn)) + (@as(f64, @floatFromInt(ny)))));
+    const n_t: f128 = 0.5 * @as(f128, @floatFromInt(n)) * @as(f128, @floatFromInt(n - 1));
+    const yynn: f128 = @as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(nn));
+    const m: f128 = (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn))) * (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(ny)));
+    const k: f128 = (@as(f128, @floatFromInt(nn)) + @as(f128, @floatFromInt(yn))) * (@as(f128, @floatFromInt(nn)) + @as(f128, @floatFromInt(ny)));
+    _p.* = if (ny == 0 and yy == 0) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(ny))));
+    _rc.* = if (yy == 0 and yn == 0) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn))));
+    _cdi.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @floatCast(2.0 * @as(f128, @floatFromInt(yy)) / (2.0 * @as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn)) + @as(f128, @floatFromInt(ny))));
+    _fmi.* = if (yy == 0 and (yn == 0 or ny == 0)) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / std.math.sqrt((@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn))) * (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(ny)))));
+    _hi.* = if (m == 0.0 or k == 0.0) 0.0 else @floatCast((n_t * @as(f128, @floatFromInt(yy)) - m) / std.math.sqrt(k * m));
+    _ji.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn)) + @as(f128, @floatFromInt(ny))));
+    _ki.* = if (yy == 0 and (ny == 0 or yn == 0)) 0.0 else @floatCast(0.5 * ((@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(ny)))) + (@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(yn))))));
+    _mni.* = if (yn == 0 and ny == 0) 0.0 else @floatCast((@as(f128, @floatFromInt(yn)) - @as(f128, @floatFromInt(ny))) / std.math.sqrt(@as(f128, @floatFromInt(yn)) + @as(f128, @floatFromInt(ny))));
+    _phi.* = if (m == 0.0 or k == 0.0) 0.0 else @floatCast((@as(f128, @floatFromInt(yy)) * @as(f128, @floatFromInt(nn)) - @as(f128, @floatFromInt(yn)) * @as(f128, @floatFromInt(ny))) / (m * k));
+    _rand.* = if (n < 2) 0.0 else @floatCast((@as(f128, @floatFromInt(yy)) + @as(f128, @floatFromInt(nn))) / n_t);
+    _rti.* = if (yy == 0 and nn == 0 and yn == 0 and ny == 0) 0.0 else @floatCast(yynn / (yynn + 2.0 * @as(f128, @floatFromInt(yn)) + 2.0 * @as(f128, @floatFromInt(ny))));
+    _rri.* = if (n < 2) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / n_t);
+    _s1i.* = if (yy == 0 and yn == 0 and ny == 0) 0.0 else @floatCast(@as(f128, @floatFromInt(yy)) / (@as(f128, @floatFromInt(yy)) + 2.0 * @as(f128, @floatFromInt(yn)) + 2.0 * @as(f128, @floatFromInt(ny))));
+    _s2i.* = if (yynn == 0.0 and yn == 0 and ny == 0) 0.0 else @floatCast(yynn / (yynn + 0.5 * (@as(f128, @floatFromInt(yn)) + (@as(f128, @floatFromInt(ny))))));
 }
 
-pub fn writeFullResult(file_name: []const u8, array: []const usize, p: f64, rc: f64, cdi: f64, fmi: f64, hi: f64, ji: f64, ki: f64, mni: f64, phi: f64, randi: f64, rti: f64, rri: f64, s1i: f64, s2i: f64) !void {
+pub fn writeFullResult(comptime T: type, file_name: []const u8, array: []const usize, p: T, rc: T, cdi: T, fmi: T, hi: T, ji: T, ki: T, mni: T, phi: T, randi: T, rti: T, rri: T, s1i: T, s2i: T) !void {
+    if (@typeInfo(T) != .float) @compileError("Only floats are accepted");
+
     const file = try std.fs.cwd().createFile(file_name, .{});
     defer file.close();
     const writer = file.writer();

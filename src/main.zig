@@ -4,6 +4,8 @@ const help = @import("help");
 
 const c_allocator = std.heap.c_allocator;
 
+const used_float = f64;
+
 pub fn main() !void {
     const args = try std.process.argsAlloc(c_allocator);
     defer std.process.argsFree(c_allocator, args);
@@ -17,7 +19,7 @@ pub fn main() !void {
             std.process.exit(1);
         }
 
-        const x: [][]f64 = try help.readData(args[1], c_allocator);
+        const x: [][]used_float = try help.readData(used_float, args[1], c_allocator);
         defer {
             for (x) |*xi| c_allocator.free(xi.*);
             c_allocator.free(x);
@@ -28,12 +30,13 @@ pub fn main() !void {
             std.process.exit(1);
         }
 
-        try k_means.scaling(x);
+        try k_means.scaling(used_float, x);
 
-        var kmeans = k_means.kMeans.getKMeans(c_allocator, null);
+        var kmeans = k_means.KMeans(used_float, null, null, null, null){};
+
         defer kmeans.deinit();
 
-        try kmeans.init(k);
+        try kmeans.init(k, null, null);
 
         const start = try std.time.Instant.now();
         try kmeans.fit(x);
@@ -47,24 +50,24 @@ pub fn main() !void {
         if (args.len > 4) {
             const perfect: []usize = try help.readArrayFromFile(usize, args[4], c_allocator);
             defer c_allocator.free(perfect);
-            var p: f64 = undefined;
-            var rc: f64 = undefined;
-            var cdi: f64 = undefined;
-            var fmi: f64 = undefined;
-            var hi: f64 = undefined;
-            var ji: f64 = undefined;
-            var ki: f64 = undefined;
-            var mni: f64 = undefined;
-            var phi: f64 = undefined;
-            var randi: f64 = undefined;
-            var rti: f64 = undefined;
-            var rri: f64 = undefined;
-            var s1i: f64 = undefined;
-            var s2i: f64 = undefined;
+            var p: used_float = undefined;
+            var rc: used_float = undefined;
+            var cdi: used_float = undefined;
+            var fmi: used_float = undefined;
+            var hi: used_float = undefined;
+            var ji: used_float = undefined;
+            var ki: used_float = undefined;
+            var mni: used_float = undefined;
+            var phi: used_float = undefined;
+            var randi: used_float = undefined;
+            var rti: used_float = undefined;
+            var rri: used_float = undefined;
+            var s1i: used_float = undefined;
+            var s2i: used_float = undefined;
 
-            try help.getExternalIndices(perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &ki, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
+            try help.getExternalIndices(used_float, perfect, y, &p, &rc, &cdi, &fmi, &hi, &ji, &ki, &mni, &phi, &randi, &rti, &rri, &s1i, &s2i);
             try std.io.getStdOut().writer().print("The result of clustering using k-means:\nPrecision coefficient\t= {d:}\nRecall coefficient\t= {d:}\nCzekanowski-Dice index\t= {d:}\nFolkes-Mallows index\t= {d:}\nHubert index\t\t= {d:}\nJaccard index\t\t= {d:}\nKulczynski index\t= {d:}\nMcNemar index\t\t= {d:}\nPhi index\t\t= {d:}\nRand index\t\t= {d:}\nRogers-Tanimoto index\t= {d:}\nRussel-Rao index\t= {d:}\nSokal-Sneath I index\t= {d:}\nSokal-Sneath II index\t= {d:}\n", .{ p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i });
-            try help.writeFullResult(args[3], y, p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i);
+            try help.writeFullResult(used_float, args[3], y, p, rc, cdi, fmi, hi, ji, ki, mni, phi, randi, rti, rri, s1i, s2i);
         } else try help.writeResult(args[3], y);
     }
 }

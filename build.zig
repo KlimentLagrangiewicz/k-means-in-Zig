@@ -1,13 +1,14 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    const target = b.resolveTargetQuery(.{ .cpu_model = .native });
     const optimize = .ReleaseFast;
 
     const kmeans_module = b.addModule("k-means", .{
         .root_source_file = .{ .cwd_relative = "src/k-means.zig" },
         .optimize = optimize,
         .target = target,
+        .single_threaded = true,
         .link_libc = true,
     });
 
@@ -15,6 +16,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .cwd_relative = "src/help.zig" },
         .optimize = optimize,
         .target = target,
+        .single_threaded = true,
         .link_libc = true,
     });
 
@@ -23,6 +25,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .target = target,
         .link_libc = true,
+        .single_threaded = true,
         .imports = &.{
             .{ .name = "help", .module = help_module },
             .{ .name = "k-means", .module = kmeans_module },
@@ -31,6 +34,7 @@ pub fn build(b: *std.Build) void {
 
     const exe: *std.Build.Step.Compile = b.addExecutable(.{
         .name = "kmeans",
+        .optimize = optimize,
         .root_module = main_module,
     });
     b.installArtifact(exe);
